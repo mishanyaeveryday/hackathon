@@ -1,0 +1,5 @@
+__init__.py
+migrations
+db.sqlite3
+venv
+.env
