@@ -67,6 +67,16 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
+# Add .env in backend/server/ and write down
+DJANGO_SECRET_KEY="Your Key"
+DEBUG=TRUE OR FALSE
+NAME_DB = "Your db name"
+USERNAME_DB = "Your username db"
+PASSWORD_DB = "Your password db"
+
+# Add .env in frontend/src/ and write down
+VITE_API_URL = "Your API url"
+
 # Install dependencies
 pip install -r requirements.txt
 
@@ -462,4 +472,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **⚠️ Disclaimer**: This is an N=1 experiment platform, not medical advice. Consult healthcare professionals for serious health concerns.
 
 </div>
+
 
