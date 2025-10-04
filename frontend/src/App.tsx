@@ -457,7 +457,7 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'practices' | 'plan' | 'slot' | 'dashboard' | 'settings' | 'login' | 'register' | 'profile'>('login');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentLanguage, setCurrentLanguage] = useState<Language>('ru');
+  const [currentLanguage, setCurrentLanguage] = useState<Language>('en');
   
   
 
@@ -1752,10 +1752,6 @@ onCheckedChange={async (checked: any) => {
                 </Button>
 
                 <div className="text-center space-y-2">
-                  <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded">
-                    {currentLanguage === 'ru' ? 'Демо' :
-                     currentLanguage === 'en' ? 'Demo' : 'Demo'}: test@example.com / password
-                  </div>
                   <p className="text-sm text-muted-foreground">
                     {t('copy.auth.noAccount', currentLanguage)}{' '}
                     <button
