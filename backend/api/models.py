@@ -30,6 +30,7 @@ class PracticeTemplate(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     default_duration_sec = models.PositiveIntegerField(default=600)  
+    video = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -41,8 +42,6 @@ class UserPractice(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user_practices")
     template = models.ForeignKey(PracticeTemplate, on_delete=models.CASCADE, related_name="user_practices")
-    custom_title = models.CharField(max_length=255, blank=True, null=True)
-    duration_sec = models.PositiveIntegerField()
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
