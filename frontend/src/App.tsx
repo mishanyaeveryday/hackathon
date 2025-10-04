@@ -925,7 +925,9 @@ const handleRegister = async () => {
         </p>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      <div className="mb-8">
+        <div className="max-h-[60vh] overflow-y-auto pr-2 overscroll-contain thin-scrollbar">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {practices.map(practice => (
           <Card key={practice.id} className="relative">
             <CardHeader className="pb-4">
@@ -969,6 +971,8 @@ onCheckedChange={async (checked: any) => {
           </Card>
         ))}
       </div>
+                </div>
+                </div>
       
       <div className="text-center">
         <Button 
@@ -1346,8 +1350,8 @@ onCheckedChange={async (checked: any) => {
       {t('copy.profile.practiceStatsSub', currentLanguage)}
     </p>
   </CardHeader>
-  <CardContent>
-    <div className="space-y-4">
+  <CardContent className="p-0">
+    <div className="max-h-[50vh] overflow-y-auto px-6 py-4 space-y-4 overscroll-contain thin-scrollbar">
       {practiceStats.map(practice => (
         <div key={practice.id} className="flex items-center justify-between p-4 border rounded-lg">
           <div className="flex-1">
