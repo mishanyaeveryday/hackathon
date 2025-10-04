@@ -4,9 +4,14 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-from api.models import User, PracticeTemplate
-from api.serializers import UserSerializer, PracticeTemplateSerializer
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from django.utils import timezone
+from rest_framework.response import Response
+
+from api.models import User, PracticeTemplate, UserPractice, DayPlan, Slot, Rating
+from api.serializers import (UserSerializer, PracticeTemplateSerializer,
+                UserPracticeSerializer, UserPracticeFromTemplateSerializer, DayPlanSerializer,SlotSerializer, RatingSerializer)
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework import viewsets, permissions
@@ -94,5 +99,73 @@ class PracticeTemplateViewSet(viewsets.ModelViewSet):
             return [permissions.IsAdminUser()]
         return [permissions.AllowAny()]
 
+class UserPracticeViewSet(viewsets.ModelViewSet):
+    queryset = UserPractice.objects.all()
+    serializer_class = UserPracticeSerializer
+
+    def get_queryset(self):
+        return UserPractice.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=['post'], url_path='from-template')
+    def add_practice_from_templates(self, request):
+        serializer = UserPracticeFromTemplateSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        practice = serializer.save()
+        return Response(UserPracticeSerializer(practice).data, status=status.HTTP_201_CREATED)
+    
+class DayPlanViewSet(viewsets.ModelViewSet):
+    queryset = DayPlan.objects.all()
+    serializer_class = DayPlanSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAdminUser()]
+        return [permissions.IsAuthenticated()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return DayPlan.objects.all()
+        return DayPlan.objects.filter(user=user)
+    
+class SlotViewSet(viewsets.ModelViewSet):
+    queryset = Slot.objects.all()
+    serializer_class = SlotSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Slot.objects.filter(user=user)
+        day_plan_id = self.request.query_params.get('day_plan')
+        if day_plan_id:
+            qs = qs.filter(day_plan_id=day_plan_id)
+        return qs
+
+    @action(detail=True, methods=['patch'])
+    def start(self, request, pk=None):
+        slot = self.get_object()
+        slot.status = 'IN_PROGRESS'
+        slot.started_at_utc = timezone.now()
+        slot.save()
+        return Response(SlotSerializer(slot).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['patch'])
+    def finish(self, request, pk=None):
+        slot = self.get_object()
+        slot.status = 'DONE'
+        slot.ended_at_utc = timezone.now()
+        slot.save()
+        return Response(SlotSerializer(slot).data, status=status.HTTP_200_OK)
+    
+class RatingViewSet(viewsets.ModelViewSet):
+    queryset = Rating.objects.all()
+    serializer_class = RatingSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Rating.objects.filter(slot__user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(rated_at_utc=timezone.now())
 
 
