@@ -388,7 +388,22 @@ const translations = {
   'copy.profile.completedPercent':{ ru: 'выполнено', en: 'completed',                    pl: 'ukończono' },
   'copy.profile.noPractices':     { ru: 'Практики не найдены', en: 'No practices found', pl: 'Nie znaleziono praktyk' },
 
-  'copy.common.at':               { ru: 'в', en: 'at',                                   pl: 'o' }
+  'copy.common.at':               { ru: 'в', en: 'at',                                   pl: 'o' },
+  'copy.settings.data': {
+    ru: 'Данные',
+    en: 'Data',
+    pl: 'Dane'
+  },
+  'copy.settings.resetDemo': {
+    ru: 'Сбросить демо-данные',
+    en: 'Reset demo data',
+    pl: 'Resetuj dane demo'
+  },
+  'copy.settings.disclaimer': {
+    ru: 'Это эксперимент N=1, не медицинская рекомендация. При серьёзных проблемах со здоровьем консультируйтесь с врачом.',
+    en: 'This is an N=1 experiment, not medical advice. Consult a doctor for serious health issues.',
+    pl: 'To eksperyment N=1, a nie porada medyczna. W przypadku poważnych problemów zdrowotnych skonsultuj się z lekarzem.'
+  }
 } as const;
 
 // Translation function with interpolation
@@ -713,9 +728,9 @@ const [practices, setPractices] = useState<Practice[]>(getInitialPractices(curre
   // Language Switcher Component
   const LanguageSwitcher = () => {
     const languageOptions = [
-      { value: 'ru' as Language, label: 'RU', name: 'Русский' },
-      { value: 'en' as Language, label: 'EN', name: 'English' },
-      { value: 'pl' as Language, label: 'PL', name: 'Polski' }
+      { value: 'ru' as Language, label: 'RU' },
+      { value: 'en' as Language, label: 'EN' },
+      { value: 'pl' as Language, label: 'PL' }
     ];
 
     return (
@@ -728,7 +743,6 @@ const [practices, setPractices] = useState<Practice[]>(getInitialPractices(curre
             <SelectItem key={option.value} value={option.value}>
               <div className="flex items-center gap-2">
                 <span className="text-sm">{option.label}</span>
-                <span className="text-xs text-muted-foreground">{option.name}</span>
               </div>
             </SelectItem>
           ))}
@@ -1858,26 +1872,25 @@ const [practices, setPractices] = useState<Practice[]>(getInitialPractices(curre
         </Card>
         
         <Card>
-          <CardHeader>
-            <CardTitle>Данные</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                setSlots([]);
-                setAssessments([]);
-                setCurrentSlot(null);
-              }}
-            >
-              Сбросить демо-данные
-            </Button>
-            <p className="text-xs text-muted-foreground mt-4">
-              Это N=1 эксперимент, не медицинская рекомендация. 
-              Консультируйтесь с врачом ��ри серьёзных проблемах со здоровьем.
-            </p>
-          </CardContent>
-        </Card>
+  <CardHeader>
+    <CardTitle>{t('copy.settings.data', currentLanguage)}</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <Button
+      variant="outline"
+      onClick={() => {
+        setSlots([]);
+        setAssessments([]);
+        setCurrentSlot(null);
+      }}
+    >
+      {t('copy.settings.resetDemo', currentLanguage)}
+    </Button>
+    <p className="text-xs text-muted-foreground mt-4">
+      {t('copy.settings.disclaimer', currentLanguage)}
+    </p>
+  </CardContent>
+</Card>
       </div>
     </div>
   );
