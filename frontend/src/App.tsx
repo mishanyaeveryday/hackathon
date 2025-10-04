@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Skeleton } from "./components/ui/skeleton";
 import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
   apiGetPracticeTemplates, apiGetUserPractices, apiAddUserPracticeFromTemplate, apiDeleteUserPractice,
-  apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating } from './api';
+  apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating, 
+  apiListSlots} from './api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { 
   Play, 
@@ -601,63 +602,85 @@ async function loadPractices() {
 
 // Generate daily plan
   const generateDayPlan = async () => {
-    const activePractices = practices.filter(p => p.active);
-    const today = new Date().toISOString().split('T')[0];
-    const timeSlots: ('morning' | 'day' | 'evening')[] = ['morning', 'day', 'evening'];
+  const activePractices = practices.filter(p => p.active);
+  if (activePractices.length === 0) {
+    setSlots([]); 
+    setCurrentScreen('practices');
+    return;
+  }
 
-    let serverDayPlanId: string | null = null;
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const dp = await apiCreateDayPlan(today, tz);
-      serverDayPlanId = dp.id;
-    } catch (e) {
-      console.warn('DayPlan create failed (maybe admin-only). Continue locally.');
-    }
+  const today = new Date().toISOString().slice(0, 10);
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
-    const newSlots: Slot[] = [];
-    let doCount = 0, ctrlCount = 0;
-
-    for (let i = 0; i < 6; i++) {
-      const isDo = doCount <= ctrlCount;
-      const practiceId = isDo ? (activePractices[Math.floor(Math.random() * activePractices.length)]?.id || null) : null;
-      if (isDo) doCount++; else ctrlCount++;
-      const timeOfDay = timeSlots[Math.floor(Math.random() * timeSlots.length)];
-
-      newSlots.push({
-        id: `slot-${Date.now()}-${i}`,
-        practiceId,
-        timeOfDay,
-        duration: practiceId ? practices.find(p => p.id === practiceId)?.duration || 2 : 2,
-        completed: false,
-        date: today,
-        instruction: t('copy.timer.instruction', currentLanguage)
-      });
-
-      if (serverDayPlanId) {
-        try {
-          const variant = isDo ? 'DO' : 'CONTROL';
-          const tod = timeOfDay === 'morning' ? 'MORNING' : timeOfDay === 'day' ? 'AFTERNOON' : 'EVENING';
-          const scheduled = new Date(Date.now() + (i+1)*60*60*1000).toISOString();
-          const upId = practiceId ? userPracticeByTemplate[practiceId] : null;
-          await apiCreateSlot({
-            day_plan: serverDayPlanId,
-            user_practice: upId,
-            variant,
-            status: 'PLANNED',
-            time_of_day: tod,
-            scheduled_at_utc: scheduled,
-            duration_sec_snapshot: Math.round((practiceId ? (practices.find(p => p.id === practiceId)?.duration || 2) : 2) * 60),
-            display_payload: { neutral_instruction: t('copy.timer.instruction', currentLanguage) }
-          });
-        } catch (e) {
-          console.warn('Create slot failed', e);
-        }
-      }
-    }
-
-    setSlots(newSlots);
+  let dayPlanId: string | null = null;
+  try {
+    const dp = await apiCreateDayPlan(today, tz);
+    dayPlanId = dp.id;
+  } catch (e) {
+    console.warn('DayPlan create failed; not showing local stub slots', e);
+    setSlots([]);         
     setCurrentScreen('plan');
-  };
+    return;
+  }
+
+  const toServerTimeOfDay = (t: 'morning'|'day'|'evening') =>
+    t === 'morning' ? 'MORNING' : t === 'day' ? 'AFTERNOON' : 'EVENING';
+
+  const todCycle: ('morning'|'day'|'evening')[] = ['morning','day','evening'];
+  const count = 4 + Math.floor(Math.random() * 3);
+  let doCount = 0, ctrlCount = 0;
+
+  for (let i = 0; i < count; i++) {
+    const timeOfDay = todCycle[i % 3];
+    const intendsDo = doCount <= ctrlCount;
+    const practiceId = intendsDo ? (activePractices[Math.floor(Math.random() * activePractices.length)]?.id ?? null) : null;
+    const upId = practiceId ? userPracticeByTemplate[practiceId] : null;
+
+    const isDo = intendsDo && !!upId;
+    if (isDo) doCount++; else ctrlCount++;
+
+    const durationMin = isDo ? (practices.find(p => p.id === practiceId)?.duration ?? 2) : 2;
+
+    const payload: any = {
+      day_plan: dayPlanId!,
+      variant: isDo ? 'DO' : 'CONTROL',
+      status: 'PLANNED',
+      time_of_day: toServerTimeOfDay(timeOfDay),
+      scheduled_at_utc: new Date(Date.now() + (i+1)*60*60*1000).toISOString(),
+      duration_sec_snapshot: Math.round(durationMin * 60),
+      display_payload: { neutral_instruction: t('copy.timer.instruction', currentLanguage) }
+    };
+    if (isDo && upId) payload.user_practice = upId; 
+
+    try {
+      await apiCreateSlot(payload);
+    } catch (e) {
+      console.warn('Create slot failed', e);
+    }
+  }
+
+  try {
+    const dtos = await apiListSlots({ day_plan: dayPlanId! });
+    const mapped: Slot[] = dtos.map(d => ({
+      id: d.id,                                     
+      practiceId: d.user_practice ? ( 
+        Object.keys(userPracticeByTemplate).find(tid => userPracticeByTemplate[tid] === d.user_practice) || null
+      ) : null,
+      timeOfDay: d.time_of_day === 'MORNING' ? 'morning' : d.time_of_day === 'AFTERNOON' ? 'day' : 'evening',
+      duration: (d.duration_sec_snapshot ?? 120) / 60,
+      completed: d.status === 'DONE',
+      date: (d.scheduled_at_utc || '').slice(0, 10) || today,
+      instruction: d.display_payload?.neutral_instruction || t('copy.timer.instruction', currentLanguage),
+      serverId: d.id
+    }));
+    setSlots(mapped);
+  } catch {
+    setSlots([]); 
+  }
+
+  setCurrentScreen('plan');
+};
+
 
 
   // Start slot timer
@@ -1477,21 +1500,32 @@ onCheckedChange={async (checked: any) => {
       }
     };
 
-    const getMockChartData = () => {
-      const morningLabel = currentLanguage === 'ru' ? 'Утро' : 
-                          currentLanguage === 'en' ? 'Morning' : 'Rano';
-      const dayLabel = currentLanguage === 'ru' ? 'День' : 
-                      currentLanguage === 'en' ? 'Day' : 'Dzień';
-      const eveningLabel = currentLanguage === 'ru' ? 'Вечер' : 
-                          currentLanguage === 'en' ? 'Evening' : 'Wieczór';
-      
-      return [
-        { timeOfDay: morningLabel, mood: 6.2, lightness: 7.1, satisfaction: 5.8, nervousness: 4.3 },
-        { timeOfDay: dayLabel, mood: 7.5, lightness: 6.8, satisfaction: 7.2, nervousness: 3.9 },
-        { timeOfDay: eveningLabel, mood: 6.9, lightness: 6.2, satisfaction: 6.8, nervousness: 5.1 }
-      ];
-    };
+    const buildChartData = () => {
+  // группируем оценки по timeOfDay слота
+  const buckets: Record<'morning'|'day'|'evening', any[]> = { morning: [], day: [], evening: [] };
+  assessments.forEach(a => {
+    const slot = slots.find(s => s.id === a.slotId);
+    if (!slot) return;
+    buckets[slot.timeOfDay].push(a);
+  });
+  const avg = (arr: any[], key: 'mood'|'ease'|'satisfaction'|'nervousness') =>
+    arr.length ? Math.round((arr.reduce((s,x)=> s + Number(x[key] ?? 0), 0) / arr.length) * 10) / 10 : 0;
 
+  const label = (key:'morning'|'day'|'evening') =>
+    key === 'morning' ? (currentLanguage==='ru'?'Утро': currentLanguage==='pl'?'Rano':'Morning')
+    : key === 'day'    ? (currentLanguage==='ru'?'День': currentLanguage==='pl'?'Dzień':'Day')
+                       : (currentLanguage==='ru'?'Вечер': currentLanguage==='pl'?'Wieczór':'Evening');
+
+  return (['morning','day','evening'] as const).map(k => ({
+    timeOfDay: label(k),
+    mood: avg(buckets[k], 'mood'),
+    lightness: avg(buckets[k], 'ease'), // если где-то остался lightness — тоже подхватится
+    satisfaction: avg(buckets[k], 'satisfaction'),
+    nervousness: avg(buckets[k], 'nervousness'),
+  }));
+};
+
+    
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
@@ -1562,7 +1596,7 @@ onCheckedChange={async (checked: any) => {
               <CardContent>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={getMockChartData()}>
+                    <BarChart data={buildChartData()}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="timeOfDay" />
                       <YAxis domain={[0, 10]} />

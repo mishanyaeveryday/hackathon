@@ -50,6 +50,9 @@ class DayPlan(models.Model):
     class Meta:
         unique_together = ("user", "local_date")
         ordering = ["-local_date"]
+        constraints = [
+        models.UniqueConstraint(fields=['user','local_date'], name='uniq_user_date')
+    ]
 
     def __str__(self):
         return f"{self.user} — {self.local_date}"

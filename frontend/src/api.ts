@@ -122,18 +122,36 @@ export async function apiDeleteUserPractice(user_practice_id: string) {
   if (!r.ok) throw new Error('delete_user_practice_failed');
 }
 
-/** DAY PLAN + SLOTS */
 export type DayPlan = { id: string; local_date: string; timezone: string };
+
+export async function apiGetDayPlanByDate(local_date: string): Promise<DayPlan | null> {
+  const r = await request(`/day_plan/?local_date=${encodeURIComponent(local_date)}`, { method: 'GET' });
+  if (!r.ok) return null;
+  const list = await r.json();
+  return Array.isArray(list) && list.length ? list[0] : null;
+}
+
 export async function apiCreateDayPlan(local_date: string, timezone: string): Promise<DayPlan> {
-  // NB: в твоём бекенде create сейчас только для admin — см. комментарий выше
+  const existing = await apiGetDayPlanByDate(local_date);
+  if (existing) return existing;
+
   const r = await request(`/day_plan/`, {
     method: 'POST',
     body: JSON.stringify({ local_date, timezone })
   });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data?.detail || 'create_day_plan_failed');
-  return data;
-} // :contentReference[oaicite:14]{index=14}
+
+  if (r.ok) return r.json();
+
+  let data: any = null;
+  try { data = await r.json(); } catch {}
+  const msg = String(data?.detail || '');
+  if (r.status === 400 || r.status === 409 || /exist|already/i.test(msg)) {
+    const after = await apiGetDayPlanByDate(local_date);
+    if (after) return after;
+  }
+
+  throw new Error(data?.detail || 'create_day_plan_failed');
+}
 
 export type SlotCreate = {
   day_plan: string;
@@ -146,6 +164,12 @@ export type SlotCreate = {
   display_payload?: Record<string, any>;
 };
 export type Slot = SlotCreate & { id: string };
+export async function apiListSlots(params?: { day_plan?: string }) : Promise<Slot[]> {
+  const qs = params?.day_plan ? `?day_plan=${encodeURIComponent(params.day_plan)}` : '';
+  const r = await request(`/slots/${qs}`, { method: 'GET' });
+  if (!r.ok) throw new Error('list_slots_failed');
+  return r.json();
+}
 export async function apiCreateSlot(payload: SlotCreate): Promise<Slot> {
   const r = await request(`/slots/`, { method: 'POST', body: JSON.stringify(payload) });
   if (!r.ok) throw new Error('create_slot_failed');

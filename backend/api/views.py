@@ -112,21 +112,44 @@ class DayPlanViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
             permission_classes = [permissions.IsAdminUser]
-        elif self.action == 'create':
-            permission_classes = [permissions.IsAuthenticated]
         else:
             permission_classes = [permissions.IsAuthenticated]
-
-        return [permission() for permission in permission_classes]
+        return [p() for p in permission_classes]
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_staff:
-            return DayPlan.objects.all()
-        return DayPlan.objects.filter(user=user)
+        qs = DayPlan.objects.filter(user=self.request.user)
+        local_date = self.request.query_params.get('local_date')
+        if local_date:
+            qs = qs.filter(local_date=local_date)
+        return qs.order_by('-local_date')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+    local_date = request.data.get('local_date')
+    timezone = request.data.get('timezone')
+    if not local_date or not timezone:
+        return Response({'detail':'local_date and timezone are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    obj, created = DayPlan.objects.get_or_create(
+        user=request.user,
+        local_date=local_date,
+        defaults={'timezone': timezone}
+    )
+    if not created and obj.timezone != timezone:
+        obj.timezone = timezone
+        obj.save(update_fields=['timezone'])
+
+    ser = self.get_serializer(obj)
+    return Response(ser.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def get_queryset(self):
+    qs = DayPlan.objects.filter(user=self.request.user)
+    ld = self.request.query_params.get('local_date')
+    if ld:
+        qs = qs.filter(local_date=ld)
+    return qs.order_by('-local_date')
     
 class SlotViewSet(viewsets.ModelViewSet):
     queryset = Slot.objects.all()

@@ -12,6 +12,7 @@ class PracticeTemplateSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class DayPlanSerializer(serializers.ModelSerializer):
+      user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     class Meta:
         model = DayPlan
         fields = '__all__'
