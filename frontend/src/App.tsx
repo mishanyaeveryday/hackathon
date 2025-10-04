@@ -7,6 +7,8 @@ import { Slider } from "./components/ui/slider";
 import { Checkbox } from "./components/ui/checkbox";
 import { Switch } from "./components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
 
 import { Skeleton } from "./components/ui/skeleton";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
@@ -22,7 +24,12 @@ import {
   CheckCircle,
   Sun,
   Moon,
-  Sunrise
+  Sunrise,
+  Eye,
+  EyeOff,
+  LogIn,
+  UserPlus,
+  ArrowLeft
 } from 'lucide-react';
 
 // Types
@@ -54,6 +61,13 @@ type Assessment = {
 };
 
 type TimerState = 'idle' | 'running' | 'paused' | 'completed';
+
+type User = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+};
 
 // Initial data
 const initialPractices: Practice[] = [
@@ -89,7 +103,9 @@ const mockChartData = [
 
 export default function App() {
   // State management
-  const [currentScreen, setCurrentScreen] = useState<'practices' | 'plan' | 'slot' | 'dashboard' | 'settings'>('practices');
+  const [currentScreen, setCurrentScreen] = useState<'practices' | 'plan' | 'slot' | 'dashboard' | 'settings' | 'login' | 'register'>('login');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [practices, setPractices] = useState<Practice[]>(initialPractices);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentSlot, setCurrentSlot] = useState<Slot | null>(null);
@@ -103,6 +119,25 @@ export default function App() {
     satisfaction: [5],
     nervousness: [5]
   });
+
+  // Auth form states
+  const [loginForm, setLoginForm] = useState({
+    email: '',
+    password: '',
+    rememberMe: false
+  });
+  const [registerForm, setRegisterForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    agreeToTerms: false
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   // Timer logic
   useEffect(() => {
@@ -195,6 +230,74 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Auth functions
+  const handleLogin = async () => {
+    setAuthLoading(true);
+    setAuthError('');
+    
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Mock validation
+    if (loginForm.email === 'test@example.com' && loginForm.password === 'password') {
+      setCurrentUser({
+        id: '1',
+        email: loginForm.email,
+        firstName: 'Тест',
+        lastName: 'Пользователь'
+      });
+      setIsAuthenticated(true);
+      setCurrentScreen('practices');
+    } else {
+      setAuthError('Неверный email или пароль');
+    }
+    
+    setAuthLoading(false);
+  };
+
+  const handleRegister = async () => {
+    setAuthLoading(true);
+    setAuthError('');
+    
+    // Validation
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setAuthError('Пароли не совпадают');
+      setAuthLoading(false);
+      return;
+    }
+    
+    if (registerForm.password.length < 8) {
+      setAuthError('Пароль должен содержать минимум 8 символов');
+      setAuthLoading(false);
+      return;
+    }
+    
+    if (!registerForm.agreeToTerms) {
+      setAuthError('Необходимо согласиться с условиями');
+      setAuthLoading(false);
+      return;
+    }
+    
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    setCurrentUser({
+      id: '1',
+      email: registerForm.email,
+      firstName: registerForm.firstName,
+      lastName: registerForm.lastName
+    });
+    setIsAuthenticated(true);
+    setCurrentScreen('practices');
+    setAuthLoading(false);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    setCurrentScreen('login');
+  };
+
   // Get time of day icon
   const getTimeIcon = (timeOfDay: string) => {
     switch (timeOfDay) {
@@ -206,53 +309,82 @@ export default function App() {
   };
 
   // Navigation component
-  const Navigation = () => (
-    <nav className="border-b bg-white px-4 py-3">
-      <div className="max-w-6xl mx-auto flex items-center justify-between">
-        <div className="flex items-center space-x-8">
-          <h1 className="text-xl tracking-tight">Placebo Coach</h1>
-          <div className="hidden md:flex space-x-6">
-            <Button 
-              variant={currentScreen === 'plan' ? 'default' : 'ghost'}
-              onClick={() => setCurrentScreen('plan')}
-              className="h-9"
-            >
-              <Calendar className="w-4 h-4 mr-2" />
-              План
-            </Button>
-            <Button 
-              variant={currentScreen === 'slot' ? 'default' : 'ghost'}
-              onClick={() => setCurrentScreen('slot')}
-              className="h-9"
-              disabled={!currentSlot}
-            >
-              <Clock className="w-4 h-4 mr-2" />
-              Слот
-            </Button>
-            <Button 
-              variant={currentScreen === 'dashboard' ? 'default' : 'ghost'}
-              onClick={() => setCurrentScreen('dashboard')}
-              className="h-9"
-            >
-              <LayoutDashboard className="w-4 h-4 mr-2" />
-              Дашборд
-            </Button>
-            <Button 
-              variant={currentScreen === 'settings' ? 'default' : 'ghost'}
-              onClick={() => setCurrentScreen('settings')}
-              className="h-9"
-            >
-              <SettingsIcon className="w-4 h-4 mr-2" />
-              Настройки
-            </Button>
+  const Navigation = () => {
+    const isAuthScreen = currentScreen === 'login' || currentScreen === 'register';
+    
+    return (
+      <nav className="border-b bg-white px-4 py-3">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-8">
+            <h1 className="text-xl tracking-tight">Placebo Coach</h1>
+            {isAuthenticated && !isAuthScreen && (
+              <div className="hidden md:flex space-x-6">
+                <Button 
+                  variant={currentScreen === 'plan' ? 'default' : 'ghost'}
+                  onClick={() => setCurrentScreen('plan')}
+                  className="h-9"
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  План
+                </Button>
+                <Button 
+                  variant={currentScreen === 'slot' ? 'default' : 'ghost'}
+                  onClick={() => setCurrentScreen('slot')}
+                  className="h-9"
+                  disabled={!currentSlot}
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  Слот
+                </Button>
+                <Button 
+                  variant={currentScreen === 'dashboard' ? 'default' : 'ghost'}
+                  onClick={() => setCurrentScreen('dashboard')}
+                  className="h-9"
+                >
+                  <LayoutDashboard className="w-4 h-4 mr-2" />
+                  Дашборд
+                </Button>
+                <Button 
+                  variant={currentScreen === 'settings' ? 'default' : 'ghost'}
+                  onClick={() => setCurrentScreen('settings')}
+                  className="h-9"
+                >
+                  <SettingsIcon className="w-4 h-4 mr-2" />
+                  Настройки
+                </Button>
+              </div>
+            )}
           </div>
+          
+          {isAuthenticated && !isAuthScreen ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground hidden md:inline">
+                {currentUser?.firstName} {currentUser?.lastName}
+              </span>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleLogout}
+                title="Выйти"
+              >
+                <User className="w-4 h-4" />
+              </Button>
+            </div>
+          ) : !isAuthScreen ? (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setCurrentScreen('login')}
+              title="Войти"
+            >
+              <LogIn className="w-4 h-4 mr-2" />
+              Войти
+            </Button>
+          ) : null}
         </div>
-        <Button variant="ghost" size="sm">
-          <User className="w-4 h-4" />
-        </Button>
-      </div>
-    </nav>
-  );
+      </nav>
+    );
+  };
 
   // Practice Selection Screen
   const PracticeSelection = () => (
@@ -523,6 +655,288 @@ export default function App() {
     );
   };
 
+  // Login Screen
+  const LoginScreen = () => (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Вход</CardTitle>
+          <p className="text-muted-foreground">
+            Продолжим ваш N=1 эксперимент
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {authError && (
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg">
+              {authError}
+            </div>
+          )}
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="your@email.com"
+                value={loginForm.email}
+                onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                disabled={authLoading}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="password">Пароль</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Введите пароль"
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                  disabled={authLoading}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={authLoading}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="remember"
+                checked={loginForm.rememberMe}
+                onCheckedChange={(checked) => setLoginForm(prev => ({ ...prev, rememberMe: !!checked }))}
+                disabled={authLoading}
+              />
+              <Label htmlFor="remember" className="text-sm">
+                Запомнить меня
+              </Label>
+            </div>
+          </div>
+          
+          <Button 
+            onClick={handleLogin} 
+            className="w-full" 
+            size="lg"
+            disabled={authLoading || !loginForm.email || !loginForm.password}
+          >
+            {authLoading ? 'Вход...' : 'Войти'}
+          </Button>
+          
+          <div className="text-center space-y-2">
+            <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded">
+              Демо: test@example.com / password
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Нет аккаунта?{' '}
+              <button
+                onClick={() => setCurrentScreen('register')}
+                className="text-primary hover:underline"
+                disabled={authLoading}
+              >
+                Зарегистрироваться
+              </button>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Это N=1 эксперимент, не медицинская рекомендация
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // Register Screen
+  const RegisterScreen = () => (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Создать аккаунт</CardTitle>
+          <p className="text-muted-foreground">
+            Пара экранов — и можно к практике
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {authError && (
+            <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg">
+              {authError}
+            </div>
+          )}
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">Имя</Label>
+                <Input
+                  id="firstName"
+                  placeholder="Имя"
+                  value={registerForm.firstName}
+                  onChange={(e) => setRegisterForm(prev => ({ ...prev, firstName: e.target.value }))}
+                  disabled={authLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Фамилия</Label>
+                <Input
+                  id="lastName"
+                  placeholder="Фамилия"
+                  value={registerForm.lastName}
+                  onChange={(e) => setRegisterForm(prev => ({ ...prev, lastName: e.target.value }))}
+                  disabled={authLoading}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="registerEmail">Email</Label>
+              <Input
+                id="registerEmail"
+                type="email"
+                placeholder="your@email.com"
+                value={registerForm.email}
+                onChange={(e) => setRegisterForm(prev => ({ ...prev, email: e.target.value }))}
+                disabled={authLoading}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="registerPassword">Пароль</Label>
+              <div className="relative">
+                <Input
+                  id="registerPassword"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Минимум 8 символов"
+                  value={registerForm.password}
+                  onChange={(e) => setRegisterForm(prev => ({ ...prev, password: e.target.value }))}
+                  disabled={authLoading}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={authLoading}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {registerForm.password && (
+                <div className="space-y-1">
+                  <div className="flex space-x-1">
+                    {[1, 2, 3, 4].map((segment) => (
+                      <div
+                        key={segment}
+                        className={`h-1 flex-1 rounded-full ${
+                          registerForm.password.length >= segment * 2
+                            ? registerForm.password.length < 6
+                              ? 'bg-red-400'
+                              : registerForm.password.length < 8
+                              ? 'bg-orange-400'
+                              : registerForm.password.length < 10
+                              ? 'bg-green-400'
+                              : 'bg-blue-400'
+                            : 'bg-gray-200'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {registerForm.password.length < 6
+                      ? 'Слабый'
+                      : registerForm.password.length < 8
+                      ? 'Средний'
+                      : registerForm.password.length < 10
+                      ? 'Хороший'
+                      : 'Сильный'}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Подтвердить пароль</Label>
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Повторите пароль"
+                  value={registerForm.confirmPassword}
+                  onChange={(e) => setRegisterForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  disabled={authLoading}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  disabled={authLoading}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="terms"
+                checked={registerForm.agreeToTerms}
+                onCheckedChange={(checked) => setRegisterForm(prev => ({ ...prev, agreeToTerms: !!checked }))}
+                disabled={authLoading}
+              />
+              <Label htmlFor="terms" className="text-sm">
+                Согласен с условиями и политикой
+              </Label>
+            </div>
+          </div>
+          
+          <Button 
+            onClick={handleRegister} 
+            className="w-full" 
+            size="lg"
+            disabled={authLoading || !registerForm.email || !registerForm.password || !registerForm.confirmPassword || !registerForm.agreeToTerms}
+          >
+            {authLoading ? 'Создание...' : 'Создать аккаунт'}
+          </Button>
+          
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground">
+              Уже есть аккаунт?{' '}
+              <button
+                onClick={() => setCurrentScreen('login')}
+                className="text-primary hover:underline"
+                disabled={authLoading}
+              >
+                Войти
+              </button>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   // Dashboard Screen
   const Dashboard = () => {
     const [selectedMetric, setSelectedMetric] = useState<'mood' | 'lightness' | 'satisfaction' | 'nervousness'>('mood');
@@ -702,6 +1116,14 @@ export default function App() {
         >
           <SettingsIcon className="w-4 h-4" />
         </Button>
+        <Button 
+          variant="ghost"
+          onClick={handleLogout}
+          size="sm"
+          title="Выйти"
+        >
+          <User className="w-4 h-4" />
+        </Button>
       </div>
     </div>
   );
@@ -709,22 +1131,26 @@ export default function App() {
   // Render current screen
   const renderScreen = () => {
     switch (currentScreen) {
+      case 'login': return <LoginScreen />;
+      case 'register': return <RegisterScreen />;
       case 'practices': return <PracticeSelection />;
       case 'plan': return <DayPlan />;
       case 'slot': return <SlotTimer />;
       case 'dashboard': return <Dashboard />;
       case 'settings': return <Settings />;
-      default: return <PracticeSelection />;
+      default: return isAuthenticated ? <PracticeSelection /> : <LoginScreen />;
     }
   };
 
+  const isAuthScreen = currentScreen === 'login' || currentScreen === 'register';
+  
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-      <main className="pb-20 md:pb-0">
+      {!isAuthScreen && <Navigation />}
+      <main className={isAuthScreen ? "" : "pb-20 md:pb-0"}>
         {renderScreen()}
       </main>
-      <MobileNav />
+      {!isAuthScreen && isAuthenticated && <MobileNav />}
     </div>
   );
 }
