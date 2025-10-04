@@ -26,19 +26,33 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
-NAME_DB = os.getenv('NAME_DB')
+
+# Database configuration for AWS RDS PostgreSQL
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_HOST = os.getenv('DB_HOST', 'localhost')  # AWS RDS endpoint
+DB_PORT = os.getenv('DB_PORT', '5432')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG')
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-USERNAME_DB= os.getenv('USERNAME_DB')
-PASSWORD_DB= os.getenv('PASSWORD_DB')
-
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+# AWS deployment settings
+ALLOWED_HOSTS = [
+    'localhost', 
+    '127.0.0.1',
+    os.getenv('AWS_DOMAIN', ''),  # Your AWS domain/ELB endpoint
+    os.getenv('AWS_EC2_IP', ''),  # Your EC2 instance IP
+]
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-]
+] + [origin for origin in [os.getenv('FRONTEND_URL')] if origin]  # Only add if FRONTEND_URL is set
+
+# For AWS deployment, you might need to allow all origins in development
+# Remove this in production and use specific origins above
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
 
 # Разрешённые методы/заголовки для preflight (обычно по умолчанию хватает)
 CORS_ALLOW_HEADERS = ['authorization', 'content-type']
@@ -116,11 +130,14 @@ WSGI_APPLICATION = 'server.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': NAME_DB,
-        'USER': USERNAME_DB, 
-        'PASSWORD': PASSWORD_DB,
-        'HOST': 'localhost',
-        'PORT': '5432'
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
+        'HOST': DB_HOST,
+        'PORT': DB_PORT,
+        'OPTIONS': {
+            'sslmode': 'require',  # Required for AWS RDS
+        },
     }
 }
 
