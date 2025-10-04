@@ -54,8 +54,8 @@ Placebo Coach is a sophisticated platform that enables users to conduct their ow
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/placebo-coach.git
-cd placebo-coach
+git clone https://github.com/yourusername/hackathon.git
+cd hackathon
 ```
 
 ### 2. Backend Setup
@@ -462,3 +462,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **⚠️ Disclaimer**: This is an N=1 experiment platform, not medical advice. Consult healthcare professionals for serious health concerns.
 
 </div>
+
