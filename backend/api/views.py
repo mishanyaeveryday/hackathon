@@ -127,29 +127,29 @@ class DayPlanViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     def create(self, request, *args, **kwargs):
-    local_date = request.data.get('local_date')
-    timezone = request.data.get('timezone')
-    if not local_date or not timezone:
-        return Response({'detail':'local_date and timezone are required'}, status=status.HTTP_400_BAD_REQUEST)
+        local_date = request.data.get('local_date')
+        timezone = request.data.get('timezone')
+        if not local_date or not timezone:
+            return Response({'detail':'local_date and timezone are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    obj, created = DayPlan.objects.get_or_create(
-        user=request.user,
-        local_date=local_date,
-        defaults={'timezone': timezone}
-    )
-    if not created and obj.timezone != timezone:
-        obj.timezone = timezone
-        obj.save(update_fields=['timezone'])
+        obj, created = DayPlan.objects.get_or_create(
+            user=request.user,
+            local_date=local_date,
+            defaults={'timezone': timezone}
+        )
+        if not created and obj.timezone != timezone:
+            obj.timezone = timezone
+            obj.save(update_fields=['timezone'])
 
-    ser = self.get_serializer(obj)
-    return Response(ser.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        ser = self.get_serializer(obj)
+        return Response(ser.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
     def get_queryset(self):
-    qs = DayPlan.objects.filter(user=self.request.user)
-    ld = self.request.query_params.get('local_date')
-    if ld:
-        qs = qs.filter(local_date=ld)
-    return qs.order_by('-local_date')
+        qs = DayPlan.objects.filter(user=self.request.user)
+        ld = self.request.query_params.get('local_date')
+        if ld:
+            qs = qs.filter(local_date=ld)
+        return qs.order_by('-local_date')
     
 class SlotViewSet(viewsets.ModelViewSet):
     queryset = Slot.objects.all()
