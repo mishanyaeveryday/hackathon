@@ -1,9 +1,11 @@
 from django.urls import path
-from api.views import get_users, get_user, register_user, login_user, logout_user
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from rest_framework.routers import DefaultRouter
+from .views import PracticeTemplateViewSet
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from .views import get_users, get_user, register_user, login_user, logout_user
+
+router = DefaultRouter()
+router.register(r'practices', PracticeTemplateViewSet, basename='practice')
 
 urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -13,4 +15,4 @@ urlpatterns = [
     path('users/registration/', register_user, name='register-user'),
     path('users/login/', login_user, name='login-user'),
     path('users/logout/', logout_user, name='logout-user'),
-]
+] + router.urls

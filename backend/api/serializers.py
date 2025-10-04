@@ -6,7 +6,6 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = '__all__'
 
-
 class PracticeTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PracticeTemplate
@@ -31,4 +30,5 @@ class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
         fields = '__all__'
+
         

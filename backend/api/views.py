@@ -5,10 +5,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
-from api.models import User
-from api.serializers import UserSerializer
+from api.models import User, PracticeTemplate
+from api.serializers import UserSerializer, PracticeTemplateSerializer
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
+from rest_framework import viewsets, permissions
 
 # Create your views here.
 
@@ -81,5 +82,17 @@ def logout_user(request):
         return Response({'message': 'Logout successful'}, status=status.HTTP_200_OK)
     except Exception:
         return Response({'error': 'Invalid refresh token'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PracticeTemplateViewSet(viewsets.ModelViewSet):
+    queryset = PracticeTemplate.objects.all().order_by('-created_at')
+    serializer_class = PracticeTemplateSerializer
+
+    def get_permissions(self):
+        """Only admin ability"""
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAdminUser()]
+        return [permissions.AllowAny()]
+
 
 
