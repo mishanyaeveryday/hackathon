@@ -73,8 +73,20 @@ export async function apiLogin({ email, password }: { email: string; password: s
   return data; // {message, access, refresh}
 } // :contentReference[oaicite:10]{index=10}
 
-export function apiLogout() {
-  setTokens(null);
+export async function apiLogout() {
+  try {
+    const refresh = localStorage.getItem('refresh');
+    if (refresh) {
+      await fetch(`${API_URL}/users/logout/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh })
+      });
+    }
+  } catch (_) {
+  } finally {
+    setTokens(null);
+  }
 }
 
 /** PRACTICES */
