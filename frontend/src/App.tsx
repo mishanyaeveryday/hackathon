@@ -354,12 +354,46 @@ const translations = {
     ru: 'Язык',
     en: 'Language',
     pl: 'Język'
-  }
+  },
+  'copy.common.minutes': {
+    ru: 'мин',
+    en: 'min',
+    pl: 'min'
+  },
+  'copy.common.seconds30': {
+    ru: '30 сек',
+    en: '30 sec',
+    pl: '30 sek'
+  },
+  'copy.common.neutralSlot': {
+    ru: 'Нейтральный слот',
+    en: 'Neutral slot',
+    pl: 'Sesja neutralna'
+  },
+  'copy.profile.overview':        { ru: 'Общий прогресс', en: 'Overall progress',        pl: 'Postęp ogólny' },
+  'copy.profile.completedSlots':  { ru: 'Завершено слотов', en: 'Slots completed',        pl: 'Zakończone sesje' },
+  'copy.profile.completionRate':  { ru: 'Процент выполнения', en: 'Completion rate',      pl: 'Wskaźnik realizacji' },
+  'copy.profile.ratingsMade':     { ru: 'Оценок сделано', en: 'Ratings made',            pl: 'Wystawione oceny' },
+  'copy.profile.progressLabel':   { ru: 'Прогресс выполнения', en: 'Completion progress', pl: 'Postęp realizacji' },
+
+  'copy.profile.practiceStats':   { ru: 'Статистика по практикам', en: 'Practice statistics', pl: 'Statystyki praktyk' },
+  'copy.profile.practiceStatsSub':{ ru: 'Эффективность и активность ваших практик', en: 'Effectiveness and activity of your practices', pl: 'Skuteczność i aktywność twoich praktyk' },
+  'copy.profile.inactive':        { ru: 'Неактивна', en: 'Inactive',                     pl: 'Nieaktywna' },
+  'copy.profile.completedOf':     { ru: 'Завершено', en: 'Completed',                     pl: 'Zakończono' },
+  'copy.profile.avgMood':         { ru: 'Ср. настроение', en: 'Avg. mood',               pl: 'Śr. nastrój' },
+  'copy.profile.recentRatings':   { ru: 'Последние оценки', en: 'Recent ratings',        pl: 'Ostatnie oceny' },
+  'copy.profile.quickActions':    { ru: 'Быстрые действия', en: 'Quick actions',         pl: 'Szybkie działania' },
+  'copy.profile.choosePractices': { ru: 'Выбрать практики', en: 'Choose practices',      pl: 'Wybierz praktyki' },
+  'copy.profile.dayPlan':         { ru: 'План дня', en: 'Day plan',                      pl: 'Plan dnia' },
+  'copy.profile.completedPercent':{ ru: 'выполнено', en: 'completed',                    pl: 'ukończono' },
+  'copy.profile.noPractices':     { ru: 'Практики не найдены', en: 'No practices found', pl: 'Nie znaleziono praktyk' },
+
+  'copy.common.at':               { ru: 'в', en: 'at',                                   pl: 'o' }
 } as const;
 
 // Translation function with interpolation
 const t = (key: keyof typeof translations, lang: Language, vars?: Record<string, string | number>): string => {
-  let text = translations[key]?.[lang] || translations[key]?.['ru'] || key;
+  let text: string = translations[key]?.[lang] ?? translations[key]?.['ru'] ?? key as string;
   
   if (vars) {
     Object.entries(vars).forEach(([varKey, value]) => {
@@ -368,6 +402,7 @@ const t = (key: keyof typeof translations, lang: Language, vars?: Record<string,
   }
   
   return text;
+  
 };
 
 // Initial data with translations
@@ -410,6 +445,19 @@ const practiceTranslations = {
   }
 };
 
+// Locale & formatting helpers
+function getLocale(lang: Language): string {
+  return lang === 'ru' ? 'ru-RU' : lang === 'en' ? 'en-US' : 'pl-PL';
+}
+function formatDuration(lang: Language, duration: number): string {
+  if (duration === 0.5) {
+    return lang === 'ru' ? '30 сек' : (lang === 'en' ? '30 sec' : '30 sek');
+  }
+  const unit = lang === 'ru' ? 'мин' : 'min';
+  return `${duration} ${unit}`;
+}
+
+
 const getInitialPractices = (lang: Language): Practice[] => [
   {
     id: '1',
@@ -446,8 +494,10 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<'practices' | 'plan' | 'slot' | 'dashboard' | 'settings' | 'login' | 'register' | 'profile'>('login');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentLanguage, setCurrentLanguage] = useState<Language>('ru');
-  const [practices, setPractices] = useState<Practice[]>(getInitialPractices(currentLanguage));
+  const [currentLanguage, setCurrentLanguage] = useState<Language>(() => (localStorage.getItem('lang') as Language) || 'ru');
+  
+  const locale = getLocale(currentLanguage);
+const [practices, setPractices] = useState<Practice[]>(getInitialPractices(currentLanguage));
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentSlot, setCurrentSlot] = useState<Slot | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -482,7 +532,7 @@ export default function App() {
 
   // Timer logic
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (timerState === 'running' && timeRemaining > 0) {
       interval = setInterval(() => {
         setTimeRemaining(prev => {
@@ -528,7 +578,7 @@ export default function App() {
         duration: practiceId ? practices.find(p => p.id === practiceId)?.duration || 2 : 2,
         completed: false,
         date: today,
-        instruction: 'Следуйте таймеру. Дышите спокойно или сидите удобно.'
+        instruction: t('copy.timer.instruction', currentLanguage)
       });
     }
     
@@ -791,13 +841,12 @@ export default function App() {
                     {practice.duration === 0.5 ? 
                       (currentLanguage === 'ru' ? '30 сек' : 
                        currentLanguage === 'en' ? '30 sec' : '30 sek') : 
-                      `${practice.duration} ${currentLanguage === 'ru' ? 'мин' : 
-                                             currentLanguage === 'en' ? 'min' : 'min'}`}
+                      formatDuration(currentLanguage, practice.duration)}
                   </Badge>
                 </div>
                 <Checkbox 
                   checked={practice.active}
-                  onCheckedChange={(checked) => {
+                  onCheckedChange={(checked: any) => {
                     setPractices(prev => prev.map(p => 
                       p.id === practice.id ? { ...p, active: !!checked } : p
                     ));
@@ -877,8 +926,7 @@ export default function App() {
                       {slot.duration === 0.5 ? 
                         (currentLanguage === 'ru' ? '30 сек' : 
                          currentLanguage === 'en' ? '30 sec' : '30 sek') : 
-                        `${slot.duration} ${currentLanguage === 'ru' ? 'мин' : 
-                                           currentLanguage === 'en' ? 'min' : 'min'}`}
+                        formatDuration(currentLanguage, slot.duration)}
                     </span>
                     <span>•</span>
                     <Badge variant="outline" className="text-xs">
@@ -933,8 +981,7 @@ export default function App() {
                     {currentSlot.duration === 0.5 ? 
                       (currentLanguage === 'ru' ? '30 сек' : 
                        currentLanguage === 'en' ? '30 sec' : '30 sek') : 
-                      `${currentSlot.duration} ${currentLanguage === 'ru' ? 'мин' : 
-                                                 currentLanguage === 'en' ? 'min' : 'min'}`}
+                      formatDuration(currentLanguage, currentSlot.duration)}
                   </div>
                 </div>
               </div>
@@ -1008,7 +1055,7 @@ export default function App() {
                   </div>
                   <Slider
                     value={assessment.mood}
-                    onValueChange={(value) => setAssessment(prev => ({ ...prev, mood: value }))}
+                    onValueChange={(value: any) => setAssessment(prev => ({ ...prev, mood: value }))}
                     max={10}
                     step={1}
                     className="w-full"
@@ -1022,7 +1069,7 @@ export default function App() {
                   </div>
                   <Slider
                     value={assessment.lightness}
-                    onValueChange={(value) => setAssessment(prev => ({ ...prev, lightness: value }))}
+                    onValueChange={(value: any) => setAssessment(prev => ({ ...prev, lightness: value }))}
                     max={10}
                     step={1}
                     className="w-full"
@@ -1036,7 +1083,7 @@ export default function App() {
                   </div>
                   <Slider
                     value={assessment.satisfaction}
-                    onValueChange={(value) => setAssessment(prev => ({ ...prev, satisfaction: value }))}
+                    onValueChange={(value: any) => setAssessment(prev => ({ ...prev, satisfaction: value }))}
                     max={10}
                     step={1}
                     className="w-full"
@@ -1050,7 +1097,7 @@ export default function App() {
                   </div>
                   <Slider
                     value={assessment.nervousness}
-                    onValueChange={(value) => setAssessment(prev => ({ ...prev, nervousness: value }))}
+                    onValueChange={(value: any) => setAssessment(prev => ({ ...prev, nervousness: value }))}
                     max={10}
                     step={1}
                     className="w-full"
@@ -1135,7 +1182,7 @@ export default function App() {
               <Checkbox
                 id="remember"
                 checked={loginForm.rememberMe}
-                onCheckedChange={(checked) => setLoginForm(prev => ({ ...prev, rememberMe: !!checked }))}
+                onCheckedChange={(checked: any) => setLoginForm(prev => ({ ...prev, rememberMe: !!checked }))}
                 disabled={authLoading}
               />
               <Label htmlFor="remember" className="text-sm">
@@ -1345,7 +1392,7 @@ export default function App() {
                 <Checkbox
                   id="terms"
                   checked={registerForm.agreeToTerms}
-                  onCheckedChange={(checked) => setRegisterForm(prev => ({ ...prev, agreeToTerms: !!checked }))}
+                  onCheckedChange={(checked: any) => setRegisterForm(prev => ({ ...prev, agreeToTerms: !!checked }))}
                   disabled={authLoading}
                 />
                 <Label htmlFor="terms" className="text-sm">
@@ -1438,10 +1485,7 @@ export default function App() {
                   <div className="flex items-center gap-4 mt-2 text-sm">
                     <span className="text-muted-foreground">
                       {currentLanguage === 'ru' ? 'Участник с' : 
-                       currentLanguage === 'en' ? 'Member since' : 'Członek od'} {new Date().toLocaleDateString(
-                        currentLanguage === 'ru' ? 'ru-RU' : 
-                        currentLanguage === 'en' ? 'en-US' : 'pl-PL'
-                      )}
+                       currentLanguage === 'en' ? 'Member since' : 'Członek od'} {new Date().toLocaleDateString(locale)}
                     </span>
                   </div>
                 </div>
@@ -1454,181 +1498,189 @@ export default function App() {
           </Card>
 
           {/* Progress Overview */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Общий прогресс</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center">
-                  <div className="text-3xl mb-2">{completedSlots}</div>
-                  <p className="text-sm text-muted-foreground">Завершено слотов</p>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">{completionRate}%</div>
-                  <p className="text-sm text-muted-foreground">Процент выполнения</p>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl mb-2">{assessments.length}</div>
-                  <p className="text-sm text-muted-foreground">Оценок сделано</p>
-                </div>
-              </div>
-              
-              {totalSlots > 0 && (
-                <div className="mt-6">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span>Прогресс выполнения</span>
-                    <span>{completedSlots}/{totalSlots}</span>
-                  </div>
-                  <Progress value={completionRate} className="h-2" />
-                </div>
+<Card>
+  <CardHeader>
+    <CardTitle>{t('copy.profile.overview', currentLanguage)}</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="text-center">
+        <div className="text-3xl mb-2">{completedSlots}</div>
+        <p className="text-sm text-muted-foreground">
+          {t('copy.profile.completedSlots', currentLanguage)}
+        </p>
+      </div>
+      <div className="text-center">
+        <div className="text-3xl mb-2">{completionRate}%</div>
+        <p className="text-sm text-muted-foreground">
+          {t('copy.profile.completionRate', currentLanguage)}
+        </p>
+      </div>
+      <div className="text-center">
+        <div className="text-3xl mb-2">{assessments.length}</div>
+        <p className="text-sm text-muted-foreground">
+          {t('copy.profile.ratingsMade', currentLanguage)}
+        </p>
+      </div>
+    </div>
+
+    {totalSlots > 0 && (
+      <div className="mt-6">
+        <div className="flex justify-between text-sm mb-2">
+          <span>{t('copy.profile.progressLabel', currentLanguage)}</span>
+          <span>{completedSlots}/{totalSlots}</span>
+        </div>
+        <Progress value={completionRate} className="h-2" />
+      </div>
+    )}
+  </CardContent>
+</Card>
+
+{/* Practice Statistics */}
+<Card>
+  <CardHeader>
+    <CardTitle>{t('copy.profile.practiceStats', currentLanguage)}</CardTitle>
+    <p className="text-sm text-muted-foreground">
+      {t('copy.profile.practiceStatsSub', currentLanguage)}
+    </p>
+  </CardHeader>
+  <CardContent>
+    <div className="space-y-4">
+      {practiceStats.map(practice => (
+        <div key={practice.id} className="flex items-center justify-between p-4 border rounded-lg">
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <div className="font-medium">{practice.name}</div>
+              {!practice.active && (
+                <Badge variant="secondary" className="text-xs">
+                  {t('copy.profile.inactive', currentLanguage)}
+                </Badge>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Practice Statistics */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Статистика по практикам</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Эффективность и активность ваших практик
-              </p>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {practiceStats.map(practice => (
-                  <div key={practice.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <div className="font-medium">{practice.name}</div>
-                        {!practice.active && (
-                          <Badge variant="secondary" className="text-xs">Неактивна</Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {practice.description}
-                      </p>
-                      <div className="flex items-center gap-4 mt-2 text-sm">
-                        <span className="text-muted-foreground">
-                          Завершено: {practice.completedSlots}/{practice.totalSlots}
-                        </span>
-                        {practice.avgMood > 0 && (
-                          <span className="text-muted-foreground">
-                            Ср. настроение: {practice.avgMood}/10
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Badge variant="outline" className="mb-2">
-                        {practice.duration === 0.5 ? '30 сек' : `${practice.duration} мин`}
-                      </Badge>
-                      {practice.totalSlots > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          {Math.round((practice.completedSlots / practice.totalSlots) * 100)}% выполнено
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                
-                {practiceStats.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p>Практики не найдены</p>
-                    <Button 
-                      variant="outline" 
-                      className="mt-4"
-                      onClick={() => setCurrentScreen('practices')}
-                    >
-                      Выбрать практики
-                    </Button>
-                  </div>
-                )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {practice.description}
+            </p>
+            <div className="flex items-center gap-4 mt-2 text-sm">
+              <span className="text-muted-foreground">
+                {t('copy.profile.completedOf', currentLanguage)}: {practice.completedSlots}/{practice.totalSlots}
+              </span>
+              {practice.avgMood > 0 && (
+                <span className="text-muted-foreground">
+                  {t('copy.profile.avgMood', currentLanguage)}: {practice.avgMood}/10
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="text-right">
+            <Badge variant="outline" className="mb-2">
+              {formatDuration(currentLanguage, practice.duration)}
+            </Badge>
+            {practice.totalSlots > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {Math.round((practice.completedSlots / practice.totalSlots) * 100)}% {t('copy.profile.completedPercent', currentLanguage)}
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
+        </div>
+      ))}
 
-          {/* Recent Activity */}
-          {assessments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Последние оценки</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {assessments.slice(-5).reverse().map((assessment, index) => {
-                    const slot = slots.find(s => s.id === assessment.slotId);
-                    const practice = slot?.practiceId ? practices.find(p => p.id === slot.practiceId) : null;
-                    const date = new Date(assessment.timestamp);
-                    
-                    return (
-                      <div key={assessment.slotId} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                        <div>
-                          <div className="text-sm font-medium">
-                            {practice?.name || 'Нейтральный слот'}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {date.toLocaleDateString('ru-RU')} в {date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm">
-                            Настроение: {assessment.mood}/10
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Лёгкость: {assessment.lightness}/10
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+      {practiceStats.length === 0 && (
+        <div className="text-center py-8 text-muted-foreground">
+          <p>{t('copy.profile.noPractices', currentLanguage)}</p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => setCurrentScreen('practices')}
+          >
+            {t('copy.profile.choosePractices', currentLanguage)}
+          </Button>
+        </div>
+      )}
+    </div>
+  </CardContent>
+</Card>
+
+{/* Recent Activity */}
+{assessments.length > 0 && (
+  <Card>
+    <CardHeader>
+      <CardTitle>{t('copy.profile.recentRatings', currentLanguage)}</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-3">
+        {assessments.slice(-5).reverse().map((assessment) => {
+          const slot = slots.find(s => s.id === assessment.slotId);
+          const practice = slot?.practiceId ? practices.find(p => p.id === slot.practiceId) : null;
+          const date = new Date(assessment.timestamp);
+
+          return (
+            <div key={assessment.slotId} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div>
+                <div className="text-sm font-medium">
+                  {practice?.name || t('copy.common.neutralSlot', currentLanguage)}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Быстрые действия</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCurrentScreen('practices')}
-                  className="h-auto py-4 flex-col gap-2"
-                >
-                  <CheckCircle className="w-5 h-5" />
-                  <span className="text-sm">Выбрать практики</span>
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCurrentScreen('plan')}
-                  className="h-auto py-4 flex-col gap-2"
-                >
-                  <Calendar className="w-5 h-5" />
-                  <span className="text-sm">План дня</span>
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCurrentScreen('dashboard')}
-                  className="h-auto py-4 flex-col gap-2"
-                >
-                  <LayoutDashboard className="w-5 h-5" />
-                  <span className="text-sm">Дашборд</span>
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCurrentScreen('settings')}
-                  className="h-auto py-4 flex-col gap-2"
-                >
-                  <SettingsIcon className="w-5 h-5" />
-                  <span className="text-sm">Настройки</span>
-                </Button>
+                <div className="text-xs text-muted-foreground">
+                  {date.toLocaleDateString(locale)} {t('copy.common.at', currentLanguage)} {date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="text-right">
+                <div className="text-sm">
+                  {t('copy.rating.mood', currentLanguage)}: {assessment.mood}/10
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {t('copy.rating.ease', currentLanguage)}: {assessment.lightness}/10
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </CardContent>
+  </Card>
+)}
+
+{/* Quick Actions */}
+<Card>
+  <CardHeader>
+    <CardTitle>{t('copy.profile.quickActions', currentLanguage)}</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <Button
+        variant="outline"
+        onClick={() => setCurrentScreen('practices')}
+        className="h-auto py-4 flex-col gap-2"
+      >
+        <CheckCircle className="w-5 h-5" />
+        <span className="text-sm">{t('copy.profile.choosePractices', currentLanguage)}</span>
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => setCurrentScreen('plan')}
+        className="h-auto py-4 flex-col gap-2"
+      >
+        <Calendar className="w-5 h-5" />
+        <span className="text-sm">{t('copy.profile.dayPlan', currentLanguage)}</span>
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => setCurrentScreen('dashboard')}
+        className="h-auto py-4 flex-col gap-2"
+      >
+        <LayoutDashboard className="w-5 h-5" />
+        <span className="text-sm">{t('copy.nav.dashboard', currentLanguage)}</span>
+      </Button>
+      <Button
+        variant="outline"
+        onClick={() => setCurrentScreen('settings')}
+        className="h-auto py-4 flex-col gap-2"
+      >
+        <SettingsIcon className="w-5 h-5" />
+        <span className="text-sm">{t('copy.nav.settings', currentLanguage)}</span>
+      </Button>
+    </div>
+  </CardContent>
+</Card>
         </div>
       </div>
     );
@@ -1789,12 +1841,12 @@ export default function App() {
                 <div>
                   <div className="font-medium">{practice.name}</div>
                   <div className="text-sm text-muted-foreground">
-                    {practice.duration === 0.5 ? '30 секунд' : `${practice.duration} минут`}
+                    {formatDuration(currentLanguage, practice.duration)}
                   </div>
                 </div>
                 <Switch 
                   checked={practice.active}
-                  onCheckedChange={(checked) => {
+                  onCheckedChange={(checked: any) => {
                     setPractices(prev => prev.map(p => 
                       p.id === practice.id ? { ...p, active: checked } : p
                     ));
