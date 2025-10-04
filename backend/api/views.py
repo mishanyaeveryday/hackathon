@@ -8,7 +8,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from django.utils import timezone
 from rest_framework.response import Response
-
+from rest_framework.exceptions import PermissionDenied
 from api.models import User, PracticeTemplate,  DayPlan, Slot, Rating
 from api.serializers import (UserSerializer, PracticeTemplateSerializer,
                 DayPlanSerializer,SlotSerializer, RatingSerializer)
