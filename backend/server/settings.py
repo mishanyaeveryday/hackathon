@@ -30,6 +30,9 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG')
 
+USERNAME_DB= os.getenv('USERNAME_DB')
+PASSWORD_DB= os.getenv('PASSWORD_DB')
+
 ALLOWED_HOSTS = []
 
 
@@ -101,8 +104,12 @@ WSGI_APPLICATION = 'server.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'hackathon_db',
+        'USER': USERNAME_DB, 
+        'PASSWORD': PASSWORD_DB,
+        'HOST': 'localhost',
+        'PORT': '5432'
     }
 }
 
