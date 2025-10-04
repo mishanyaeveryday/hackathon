@@ -9,9 +9,9 @@ from rest_framework.decorators import action
 from django.utils import timezone
 from rest_framework.response import Response
 
-from api.models import User, PracticeTemplate, UserPractice, DayPlan, Slot, Rating
+from api.models import User, PracticeTemplate,  DayPlan, Slot, Rating
 from api.serializers import (UserSerializer, PracticeTemplateSerializer,
-                UserPracticeSerializer, UserPracticeFromTemplateSerializer, DayPlanSerializer,SlotSerializer, RatingSerializer)
+                DayPlanSerializer,SlotSerializer, RatingSerializer)
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework import viewsets, permissions
@@ -90,28 +90,20 @@ def logout_user(request):
 
 
 class PracticeTemplateViewSet(viewsets.ModelViewSet):
-    queryset = PracticeTemplate.objects.all().order_by('-created_at')
     serializer_class = PracticeTemplateSerializer
 
     def get_permissions(self):
-        """Only admin ability"""
+        """Only admin ability for modifications"""
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [permissions.IsAdminUser()]
-        return [permissions.AllowAny()]
-
-class UserPracticeViewSet(viewsets.ModelViewSet):
-    queryset = UserPractice.objects.all()
-    serializer_class = UserPracticeSerializer
+        return [permissions.AllowAny()] 
 
     def get_queryset(self):
-        return UserPractice.objects.filter(user=self.request.user)
+        user = self.request.user
+        if user.is_staff:
+            return PracticeTemplate.objects.all().order_by('-created_at')
+        return PracticeTemplate.objects.filter(user=user, is_selected=True).order_by('-created_at')
 
-    @action(detail=False, methods=['post'], url_path='from-template')
-    def add_practice_from_templates(self, request):
-        serializer = UserPracticeFromTemplateSerializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        practice = serializer.save()
-        return Response(UserPracticeSerializer(practice).data, status=status.HTTP_201_CREATED)
     
 class DayPlanViewSet(viewsets.ModelViewSet):
     queryset = DayPlan.objects.all()

@@ -1,6 +1,6 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
-from .views import PracticeTemplateViewSet, UserPracticeViewSet, DayPlanViewSet, SlotViewSet, RatingViewSet
+from .views import PracticeTemplateViewSet, DayPlanViewSet, SlotViewSet, RatingViewSet
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import get_users, get_user, register_user, login_user, logout_user
 from drf_yasg import openapi
@@ -19,7 +19,6 @@ schema_view = swagger_get_schema_view(
 
 router = DefaultRouter()
 router.register(r'practices', PracticeTemplateViewSet, basename='practice')
-router.register(r'user_practices', UserPracticeViewSet, basename='user_practice')
 router.register(r'day_plan', DayPlanViewSet, basename='day_plan')
 router.register(r'slots', SlotViewSet, basename='slot')
 router.register(r'ratings', RatingViewSet, basename='rating')

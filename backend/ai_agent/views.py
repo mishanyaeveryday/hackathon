@@ -21,6 +21,7 @@ def generate_practices_view(request):
     created = []
     for p in practices:
         obj = PracticeTemplate.objects.create(
+            user=request.user,
             title=p.get("title", "Untitled"),
             description=p.get("description", ""),
             default_duration_sec=p.get("default_duration_sec", 60),

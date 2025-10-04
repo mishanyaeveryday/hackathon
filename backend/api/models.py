@@ -27,27 +27,17 @@ class User(AbstractUser):
 
 class PracticeTemplate(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user_practices")
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     default_duration_sec = models.PositiveIntegerField(default=600)  
     video = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    is_selected = models.BooleanField(default=False)
 
     def __str__(self):
         return self.title
-
-
-class UserPractice(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user_practices")
-    template = models.ForeignKey(PracticeTemplate, on_delete=models.CASCADE, related_name="user_practices")
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return self.custom_title or self.template.title
 
 
 class DayPlan(models.Model):
@@ -86,7 +76,13 @@ class Slot(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="slots")
     day_plan = models.ForeignKey(DayPlan, on_delete=models.CASCADE, related_name="slots")
-    user_practice = models.ForeignKey(UserPractice, on_delete=models.SET_NULL, null=True, related_name="slots")
+    user_practice = models.ForeignKey(
+        PracticeTemplate, 
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="slots",
+        limit_choices_to={'is_selected': True}
+    )
 
     variant = models.CharField(max_length=10, choices=Variant.choices, default=Variant.DO)
     status = models.CharField(max_length=15, choices=Status.choices, default=Status.PLANNED)
