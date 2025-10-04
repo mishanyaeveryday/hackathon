@@ -118,7 +118,7 @@ class DayPlanViewSet(viewsets.ModelViewSet):
     serializer_class = DayPlanSerializer
 
     def get_permissions(self):
-        if self.action in ['IsAuthenticated', 'update', 'partial_update', 'destroy']:
+        if self.action in ['update', 'partial_update', 'destroy']:
             return [permissions.IsAdminUser()]
         return [permissions.IsAuthenticated()]
 
@@ -127,6 +127,9 @@ class DayPlanViewSet(viewsets.ModelViewSet):
         if user.is_staff:
             return DayPlan.objects.all()
         return DayPlan.objects.filter(user=user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
     
 class SlotViewSet(viewsets.ModelViewSet):
     queryset = Slot.objects.all()
@@ -134,12 +137,15 @@ class SlotViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        qs = Slot.objects.filter(user=user)
+        qs = Slot.objects.filter(user=self.request.user)
         day_plan_id = self.request.query_params.get('day_plan')
-        if day_plan_id:
-            qs = qs.filter(day_plan_id=day_plan_id)
-        return qs
+        return qs.filter(day_plan_id=day_plan_id) if day_plan_id else qs
+
+    def perform_create(self, serializer):
+        day_plan = serializer.validated_data['day_plan']
+        if day_plan.user != self.request.user:
+            raise PermissionDenied("Day plan does not belong to the current user")
+        serializer.save(user=self.request.user) 
 
     @action(detail=True, methods=['patch'])
     def start(self, request, pk=None):
