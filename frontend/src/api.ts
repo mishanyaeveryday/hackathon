@@ -75,11 +75,13 @@ export async function apiLogin({ email, password }: { email: string; password: s
 
 export async function apiLogout() {
   try {
+    
+    const access = localStorage.getItem('access');
     const refresh = localStorage.getItem('refresh');
     if (refresh) {
       await fetch(`${API_URL}/users/logout/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json',...(access ? { Authorization: `Bearer ${access}` } : {}) },
         body: JSON.stringify({ refresh })
       });
     }
