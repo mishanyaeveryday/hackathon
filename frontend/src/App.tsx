@@ -742,9 +742,9 @@ async function loadPractices() {
   // Language Switcher Component
   const LanguageSwitcher = () => {
     const languageOptions = [
-      { value: 'ru' as Language, label: 'RU', name: 'Русский' },
-      { value: 'en' as Language, label: 'EN', name: 'English' },
-      { value: 'pl' as Language, label: 'PL', name: 'Polski' }
+      { value: 'ru' as Language, label: 'RU'},
+      { value: 'en' as Language, label: 'EN'},
+      { value: 'pl' as Language, label: 'PL'}
     ];
 
     return (
@@ -757,7 +757,6 @@ async function loadPractices() {
             <SelectItem key={option.value} value={option.value}>
               <div className="flex items-center gap-2">
                 <span className="text-sm">{option.label}</span>
-                <span className="text-xs text-muted-foreground">{option.name}</span>
               </div>
             </SelectItem>
           ))}
