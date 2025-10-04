@@ -462,6 +462,7 @@ export default function App() {
   
 
 useEffect(() => { // auto-load practices if tokens exist
+  setCurrentScreen('login');
   const access = localStorage.getItem('access');
   if (!access) return;
   (async () => {
@@ -1164,323 +1165,9 @@ onCheckedChange={async (checked: any) => {
     );
   };
 
-  // Login Screen
-  const LoginScreen = () => (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-4">
-        <div className="flex justify-center">
-          <LanguageSwitcher />
-        </div>
-        <Card className="w-full">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">{t('copy.auth.login', currentLanguage)}</CardTitle>
-          <p className="text-muted-foreground">
-            {t('copy.auth.subtitle.login', currentLanguage)}
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {authError && (
-            <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg">
-              {authError}
-            </div>
-          )}
-          
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">{t('copy.auth.email', currentLanguage)}</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="your@email.com"
-                value={loginForm.email}
-                onChange={(e) =>setLoginForm(prev => ({ ...prev, email: e.target.value }))}
-                disabled={authLoading}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="password">{t('copy.auth.password', currentLanguage)}</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder={currentLanguage === 'ru' ? 'Введите пароль' : 
-                             currentLanguage === 'en' ? 'Enter password' : 'Wprowadź hasło'}
-                  value={loginForm.password}
-                  onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
-                  disabled={authLoading}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={authLoading}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="remember"
-                checked={loginForm.rememberMe}
-                onCheckedChange={(checked: any) => setLoginForm(prev => ({ ...prev, rememberMe: !!checked }))}
-                disabled={authLoading}
-              />
-              <Label htmlFor="remember" className="text-sm">
-                {t('copy.auth.rememberMe', currentLanguage)}
-              </Label>
-            </div>
-          </div>
-          
-          <Button 
-            onClick={handleLogin} 
-            className="w-full" 
-            size="lg"
-            disabled={authLoading || !loginForm.email || !loginForm.password}
-          >
-            {authLoading ? 
-              (currentLanguage === 'ru' ? 'Вход...' : 
-               currentLanguage === 'en' ? 'Logging in...' : 'Logowanie...') : 
-              t('copy.auth.loginLink', currentLanguage)}
-          </Button>
-          
-          <div className="text-center space-y-2">
-            <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded">
-              {currentLanguage === 'ru' ? 'Демо' : 
-               currentLanguage === 'en' ? 'Demo' : 'Demo'}: test@example.com / password
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t('copy.auth.noAccount', currentLanguage)}{' '}
-              <button
-                onClick={() => setCurrentScreen('register')}
-                className="text-primary hover:underline"
-                disabled={authLoading}
-              >
-                {t('copy.auth.registerLink', currentLanguage)}
-              </button>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t('copy.auth.disclaimer', currentLanguage)}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-      </div>
-    </div>
-  );
 
-  // Register Screen
-  const RegisterScreen = () => {
-    const getPasswordStrength = () => {
-      if (registerForm.password.length < 6) {
-        return currentLanguage === 'ru' ? 'Слабый' : 
-               currentLanguage === 'en' ? 'Weak' : 'Słaby';
-      } else if (registerForm.password.length < 8) {
-        return currentLanguage === 'ru' ? 'Средний' : 
-               currentLanguage === 'en' ? 'Medium' : 'Średni';
-      } else if (registerForm.password.length < 10) {
-        return currentLanguage === 'ru' ? 'Хороший' : 
-               currentLanguage === 'en' ? 'Good' : 'Dobry';
-      } else {
-        return currentLanguage === 'ru' ? 'Сильный' : 
-               currentLanguage === 'en' ? 'Strong' : 'Silny';
-      }
-    };
-
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="w-full max-w-md space-y-4">
-          <div className="flex justify-center">
-            <LanguageSwitcher />
-          </div>
-          <Card className="w-full">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">{t('copy.auth.register', currentLanguage)}</CardTitle>
-            <p className="text-muted-foreground">
-              {t('copy.auth.subtitle.register', currentLanguage)}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {authError && (
-              <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg">
-                {authError}
-              </div>
-            )}
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">{t('copy.auth.firstName', currentLanguage)}</Label>
-                  <Input
-                    id="firstName"
-                    placeholder={t('copy.auth.firstName', currentLanguage)}
-                    value={registerForm.firstName}
-                    onChange={(e) => setRegisterForm(prev => ({ ...prev, firstName: e.target.value }))}
-                    disabled={authLoading}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">{t('copy.auth.lastName', currentLanguage)}</Label>
-                  <Input
-                    id="lastName"
-                    placeholder={t('copy.auth.lastName', currentLanguage)}
-                    value={registerForm.lastName}
-                    onChange={(e) => setRegisterForm(prev => ({ ...prev, lastName: e.target.value }))}
-                    disabled={authLoading}
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="registerEmail">{t('copy.auth.email', currentLanguage)}</Label>
-                <Input
-                  id="registerEmail"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={registerForm.email}
-                  onChange={(e) => setRegisterForm(prev => ({ ...prev, email: e.target.value }))}
-                  disabled={authLoading}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="registerPassword">{t('copy.auth.password', currentLanguage)}</Label>
-                <div className="relative">
-                  <Input
-                    id="registerPassword"
-                    type={showPassword ? "text" : "password"}
-                    placeholder={currentLanguage === 'ru' ? 'Минимум 8 символов' : 
-                               currentLanguage === 'en' ? 'Minimum 8 characters' : 'Minimum 8 znaków'}
-                    value={registerForm.password}
-                    onChange={(e) => setRegisterForm(prev => ({ ...prev, password: e.target.value }))}
-                    disabled={authLoading}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={authLoading}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                {registerForm.password && (
-                  <div className="space-y-1">
-                    <div className="flex space-x-1">
-                      {[1, 2, 3, 4].map((segment) => (
-                        <div
-                          key={segment}
-                          className={`h-1 flex-1 rounded-full ${
-                            registerForm.password.length >= segment * 2
-                              ? registerForm.password.length < 6
-                                ? 'bg-red-400'
-                                : registerForm.password.length < 8
-                                ? 'bg-orange-400'
-                                : registerForm.password.length < 10
-                                ? 'bg-green-400'
-                                : 'bg-blue-400'
-                              : 'bg-gray-200'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {getPasswordStrength()}
-                    </p>
-                  </div>
-                )}
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">
-                  {currentLanguage === 'ru' ? 'Подтвердить пароль' : 
-                   currentLanguage === 'en' ? 'Confirm password' : 'Potwierdź hasło'}
-                </Label>
-                <div className="relative">
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    placeholder={currentLanguage === 'ru' ? 'Повторите пароль' : 
-                               currentLanguage === 'en' ? 'Repeat password' : 'Powtórz hasło'}
-                    value={registerForm.confirmPassword}
-                    onChange={(e) => setRegisterForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                    disabled={authLoading}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    disabled={authLoading}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="terms"
-                  checked={registerForm.agreeToTerms}
-                  onCheckedChange={(checked: any) => setRegisterForm(prev => ({ ...prev, agreeToTerms: !!checked }))}
-                  disabled={authLoading}
-                />
-                <Label htmlFor="terms" className="text-sm">
-                  {currentLanguage === 'ru' ? 'Согласен с условиями и политикой' : 
-                   currentLanguage === 'en' ? 'Agree with terms and policy' : 'Zgadzam się z warunkami i polityką'}
-                </Label>
-              </div>
-            </div>
-            
-            <Button 
-              onClick={handleRegister} 
-              className="w-full" 
-              size="lg"
-              disabled={authLoading || !registerForm.email || !registerForm.password || !registerForm.confirmPassword || !registerForm.agreeToTerms}
-            >
-              {authLoading ? 
-                (currentLanguage === 'ru' ? 'Создание...' : 
-                 currentLanguage === 'en' ? 'Creating...' : 'Tworzenie...') : 
-                t('copy.auth.register', currentLanguage)}
-            </Button>
-            
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                {t('copy.auth.hasAccount', currentLanguage)}{' '}
-                <button
-                  onClick={() => setCurrentScreen('login')}
-                  className="text-primary hover:underline"
-                  disabled={authLoading}
-                >
-                  {t('copy.auth.loginLink', currentLanguage)}
-                </button>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        </div>
-      </div>
-    );
-  };
+  
+  
 
   // Profile Screen
   const ProfileScreen = () => {
@@ -1977,18 +1664,330 @@ onCheckedChange={async (checked: any) => {
 
   // Render current screen
   const renderScreen = () => {
-    switch (currentScreen) {
-      case 'login': return <LoginScreen />;
-      case 'register': return <RegisterScreen />;
-      case 'practices': return <PracticeSelection />;
-      case 'plan': return <DayPlan />;
-      case 'slot': return <SlotTimer />;
-      case 'dashboard': return <Dashboard />;
-      case 'settings': return <Settings />;
-      case 'profile': return <ProfileScreen />;
-      default: return isAuthenticated ? <PracticeSelection /> : <LoginScreen />;
+  switch (currentScreen) {
+    case 'login':
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4">
+          <div className="w-full max-w-md space-y-4">
+            <div className="flex justify-center">
+              <LanguageSwitcher />
+            </div>
+            <Card className="w-full">
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl">{t('copy.auth.login', currentLanguage)}</CardTitle>
+                <p className="text-muted-foreground">
+                  {t('copy.auth.subtitle.login', currentLanguage)}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {authError && (
+                  <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg">
+                    {authError}
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">{t('copy.auth.email', currentLanguage)}</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={loginForm.email ?? ''}           // важно: всегда строка
+                      onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                      disabled={authLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password">{t('copy.auth.password', currentLanguage)}</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder={
+                          currentLanguage === 'ru' ? 'Введите пароль' :
+                          currentLanguage === 'en' ? 'Enter password' : 'Wprowadź hasło'
+                        }
+                        value={loginForm.password ?? ''}        // важно: всегда строка
+                        onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                        disabled={authLoading}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={authLoading}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="remember"
+                      checked={!!loginForm.rememberMe}
+                      onCheckedChange={(checked: any) => setLoginForm(prev => ({ ...prev, rememberMe: !!checked }))}
+                      disabled={authLoading}
+                    />
+                    <Label htmlFor="remember" className="text-sm">
+                      {t('copy.auth.rememberMe', currentLanguage)}
+                    </Label>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleLogin}
+                  className="w-full"
+                  size="lg"
+                  disabled={authLoading || !loginForm.email || !loginForm.password}
+                >
+                  {authLoading
+                    ? (currentLanguage === 'ru' ? 'Вход...' :
+                       currentLanguage === 'en' ? 'Logging in...' : 'Logowanie...')
+                    : t('copy.auth.loginLink', currentLanguage)}
+                </Button>
+
+                <div className="text-center space-y-2">
+                  <div className="text-xs text-muted-foreground p-2 bg-muted/50 rounded">
+                    {currentLanguage === 'ru' ? 'Демо' :
+                     currentLanguage === 'en' ? 'Demo' : 'Demo'}: test@example.com / password
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {t('copy.auth.noAccount', currentLanguage)}{' '}
+                    <button
+                      onClick={() => setCurrentScreen('register')}
+                      className="text-primary hover:underline"
+                      disabled={authLoading}
+                    >
+                      {t('copy.auth.registerLink', currentLanguage)}
+                    </button>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('copy.auth.disclaimer', currentLanguage)}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      );
+
+    case 'register': {
+      // локальный helper прямо внутри case
+      const pwdLen = registerForm.password?.length ?? 0;
+      const getPasswordStrength = () => {
+        if (pwdLen < 6) return currentLanguage === 'ru' ? 'Слабый' : currentLanguage === 'en' ? 'Weak' : 'Słaby';
+        if (pwdLen < 8) return currentLanguage === 'ru' ? 'Средний' : currentLanguage === 'en' ? 'Medium' : 'Średni';
+        if (pwdLen < 10) return currentLanguage === 'ru' ? 'Хороший' : currentLanguage === 'en' ? 'Good' : 'Dobry';
+        return currentLanguage === 'ru' ? 'Сильный' : currentLanguage === 'en' ? 'Strong' : 'Silny';
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4">
+          <div className="w-full max-w-md space-y-4">
+            <div className="flex justify-center">
+              <LanguageSwitcher />
+            </div>
+            <Card className="w-full">
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl">{t('copy.auth.register', currentLanguage)}</CardTitle>
+                <p className="text-muted-foreground">
+                  {t('copy.auth.subtitle.register', currentLanguage)}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {authError && (
+                  <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg">
+                    {authError}
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">{t('copy.auth.firstName', currentLanguage)}</Label>
+                      <Input
+                        id="firstName"
+                        placeholder={t('copy.auth.firstName', currentLanguage)}
+                        value={registerForm.firstName ?? ''}
+                        onChange={(e) => setRegisterForm(prev => ({ ...prev, firstName: e.target.value }))}
+                        disabled={authLoading}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">{t('copy.auth.lastName', currentLanguage)}</Label>
+                      <Input
+                        id="lastName"
+                        placeholder={t('copy.auth.lastName', currentLanguage)}
+                        value={registerForm.lastName ?? ''}
+                        onChange={(e) => setRegisterForm(prev => ({ ...prev, lastName: e.target.value }))}
+                        disabled={authLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="registerEmail">{t('copy.auth.email', currentLanguage)}</Label>
+                    <Input
+                      id="registerEmail"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={registerForm.email ?? ''}
+                      onChange={(e) => setRegisterForm(prev => ({ ...prev, email: e.target.value }))}
+                      disabled={authLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="registerPassword">{t('copy.auth.password', currentLanguage)}</Label>
+                    <div className="relative">
+                      <Input
+                        id="registerPassword"
+                        type={showPassword ? "text" : "password"}
+                        placeholder={
+                          currentLanguage === 'ru' ? 'Минимум 8 символов' :
+                          currentLanguage === 'en' ? 'Minimum 8 characters' : 'Minimum 8 znaków'
+                        }
+                        value={registerForm.password ?? ''}
+                        onChange={(e) => setRegisterForm(prev => ({ ...prev, password: e.target.value }))}
+                        disabled={authLoading}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={authLoading}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+
+                    {registerForm.password && (
+                      <div className="space-y-1">
+                        <div className="flex space-x-1">
+                          {[1, 2, 3, 4].map((segment) => (
+                            <div
+                              key={segment}
+                              className={`h-1 flex-1 rounded-full ${
+                                pwdLen >= segment * 2
+                                  ? pwdLen < 6
+                                    ? 'bg-red-400'
+                                    : pwdLen < 8
+                                    ? 'bg-orange-400'
+                                    : pwdLen < 10
+                                    ? 'bg-green-400'
+                                    : 'bg-blue-400'
+                                  : 'bg-gray-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{getPasswordStrength()}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">
+                      {currentLanguage === 'ru' ? 'Подтвердить пароль' :
+                       currentLanguage === 'en' ? 'Confirm password' : 'Potwierdź hasło'}
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        placeholder={
+                          currentLanguage === 'ru' ? 'Повторите пароль' :
+                          currentLanguage === 'en' ? 'Repeat password' : 'Powtórz hasło'
+                        }
+                        value={registerForm.confirmPassword ?? ''}
+                        onChange={(e) => setRegisterForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                        disabled={authLoading}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        disabled={authLoading}
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="terms"
+                      checked={!!registerForm.agreeToTerms}
+                      onCheckedChange={(checked: any) => setRegisterForm(prev => ({ ...prev, agreeToTerms: !!checked }))}
+                      disabled={authLoading}
+                    />
+                    <Label htmlFor="terms" className="text-sm">
+                      {currentLanguage === 'ru' ? 'Согласен с условиями и политикой' :
+                       currentLanguage === 'en' ? 'Agree with terms and policy' : 'Zgadzam się z warunkami i polityką'}
+                    </Label>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleRegister}
+                  className="w-full"
+                  size="lg"
+                  disabled={
+                    authLoading ||
+                    !registerForm.email ||
+                    !registerForm.password ||
+                    !registerForm.confirmPassword ||
+                    !registerForm.agreeToTerms
+                  }
+                >
+                  {authLoading
+                    ? (currentLanguage === 'ru' ? 'Создание...' :
+                       currentLanguage === 'en' ? 'Creating...' : 'Tworzenie...')
+                    : t('copy.auth.register', currentLanguage)}
+                </Button>
+
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {t('copy.auth.hasAccount', currentLanguage)}{' '}
+                    <button
+                      onClick={() => setCurrentScreen('login')}
+                      className="text-primary hover:underline"
+                      disabled={authLoading}
+                    >
+                      {t('copy.auth.loginLink', currentLanguage)}
+                    </button>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      );
     }
-  };
+
+    case 'practices':  return <PracticeSelection />;
+    case 'plan':       return <DayPlan />;
+    case 'slot':       return <SlotTimer />;
+    case 'dashboard':  return <Dashboard />;
+    case 'settings':   return <Settings />;
+    case 'profile':    return <ProfileScreen />;
+    default:           return isAuthenticated ? <PracticeSelection /> : (
+      // по умолчанию показываем логин
+      // (можно продублировать login JSX, но лучше переключить currentScreen='login' при маунте)
+      <div />
+    );
+  }
+};
+
 
   const isAuthScreen = currentScreen === 'login' || currentScreen === 'register';
   
