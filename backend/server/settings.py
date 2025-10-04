@@ -38,12 +38,7 @@ DB_PORT = os.getenv('DB_PORT', '5432')
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # AWS deployment settings
-ALLOWED_HOSTS = [
-    'localhost', 
-    '127.0.0.1',
-    os.getenv('AWS_DOMAIN', ''),  # Your AWS domain/ELB endpoint
-    os.getenv('AWS_EC2_IP', ''),  # Your EC2 instance IP
-]
+ALLOWED_HOSTS = ["*"]
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
