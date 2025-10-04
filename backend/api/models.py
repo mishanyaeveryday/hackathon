@@ -30,7 +30,7 @@ class PracticeTemplate(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     default_duration_sec = models.PositiveIntegerField(default=600)  
-    video = models.CharField(max_length=255)
+    video = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
