@@ -26,7 +26,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
-
+GENAI_API_KEY=os.getenv('GENAI_API_KEY')
+GENAI_MODEL=os.getenv('GENAI_MODEL')
 # Database configuration for AWS RDS PostgreSQL
 DB_NAME = os.getenv('DB_NAME')
 DB_USER = os.getenv('DB_USER')
