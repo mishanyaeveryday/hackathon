@@ -10,16 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
-
 import { Skeleton } from "./components/ui/skeleton";
-
-// load tokens on module init
-loadTokensFromStorage();
-
 import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
   apiGetPracticeTemplates, apiGetUserPractices, apiAddUserPracticeFromTemplate, apiDeleteUserPractice,
   apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating } from './api';
-
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { 
   Play, 
@@ -41,6 +35,8 @@ import {
   ArrowLeft,
   Languages
 } from 'lucide-react';
+
+loadTokensFromStorage();
 
 // Types
 type Practice = {
@@ -476,8 +472,6 @@ function formatDuration(lang: Language, duration: number): string {
   const unit = lang === 'ru' ? 'мин' : 'min';
   return `${duration} ${unit}`;
 }
-  const [currentLanguage, setCurrentLanguage] = useState<Language>(() => (localStorage.getItem('lang') as Language) || 'en');
-const locale = getLocale(currentLanguage);
 
 const getInitialPractices = (lang: Language): Practice[] => [
   {
@@ -516,7 +510,8 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
-  
+  const [currentLanguage, setCurrentLanguage] = useState<Language>('en');
+  const locale = getLocale(currentLanguage);
 
 useEffect(() => { // auto-load practices if tokens exist
   setCurrentScreen('login');
