@@ -12,10 +12,6 @@ import { Label } from "./components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 
 import { Skeleton } from "./components/ui/skeleton";
-
-// load tokens on module init
-loadTokensFromStorage();
-
 import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
   apiGetPracticeTemplates, apiGetUserPractices, apiAddUserPracticeFromTemplate, apiDeleteUserPractice,
   apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating } from './api';
@@ -459,20 +455,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentLanguage, setCurrentLanguage] = useState<Language>('ru');
   
-  
-
-useEffect(() => { // auto-load practices if tokens exist
-  const access = localStorage.getItem('access');
-  if (!access) return;
-  (async () => {
-    try {
-      setIsAuthenticated(true);
-      await loadPractices();
-      setCurrentScreen('practices');
-    } catch {}
-  })();
-}, []);
-const [userPracticeByTemplate, setUserPracticeByTemplate] = useState<Record<string,string>>({});
+  const [userPracticeByTemplate, setUserPracticeByTemplate] = useState<Record<string,string>>({});
 const [practices, setPractices] = useState<Practice[]>(getInitialPractices(currentLanguage));
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentSlot, setCurrentSlot] = useState<Slot | null>(null);

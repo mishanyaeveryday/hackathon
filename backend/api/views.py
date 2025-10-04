@@ -118,7 +118,7 @@ class DayPlanViewSet(viewsets.ModelViewSet):
     serializer_class = DayPlanSerializer
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+        if self.action in ['IsAuthenticated', 'update', 'partial_update', 'destroy']:
             return [permissions.IsAdminUser()]
         return [permissions.IsAuthenticated()]
 
