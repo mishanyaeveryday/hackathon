@@ -665,68 +665,72 @@ async function loadPractices() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Auth functions
   const handleLogin = async () => {
-    setAuthLoading(true);
-    setAuthError('');
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Mock validation
-    if (loginForm.email === 'test@example.com' && loginForm.password === 'password') {
-      setCurrentUser({
-        id: '1',
-        email: loginForm.email,
-        firstName: 'Тест',
-        lastName: 'Пользователь'
-      });
-      setIsAuthenticated(true);
-      setCurrentScreen('practices');
-    } else {
-      setAuthError('Неверный email или пароль');
-    }
-    
-    setAuthLoading(false);
-  };
+  setAuthLoading(true);
+  setAuthError('');
+  try {
+    // бек ожидает { username, password } — мы используем email как username
+    await apiLogin({ email: loginForm.email, password: loginForm.password });
 
-  const handleRegister = async () => {
-    setAuthLoading(true);
-    setAuthError('');
-    
-    // Validation
-    if (registerForm.password !== registerForm.confirmPassword) {
-      setAuthError('Пароли не совпадают');
-      setAuthLoading(false);
-      return;
-    }
-    
-    if (registerForm.password.length < 8) {
-      setAuthError('Пароль должен содержать минимум 8 символов');
-      setAuthLoading(false);
-      return;
-    }
-    
-    if (!registerForm.agreeToTerms) {
-      setAuthError('Необходимо согласиться с условиями');
-      setAuthLoading(false);
-      return;
-    }
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    // минимальная карточка пользователя в стейт
     setCurrentUser({
-      id: '1',
-      email: registerForm.email,
-      firstName: registerForm.firstName,
-      lastName: registerForm.lastName
+      id: 'me',
+      email: loginForm.email,
+      firstName: loginForm.email.split('@')[0],
+      lastName: ''
     });
     setIsAuthenticated(true);
-    setCurrentScreen('practices');
-    setAuthLoading(false);
-  };
 
+    // если у тебя есть функция подгрузки практик — подтяни
+    if (typeof loadPractices === 'function') {
+      await loadPractices();
+    }
+
+    setCurrentScreen('practices');
+  } catch (e: any) {
+    setAuthError('Неверный email или пароль');
+  } finally {
+    setAuthLoading(false);
+  }
+};
+
+const handleRegister = async () => {
+  setAuthLoading(true);
+  setAuthError('');
+  try {
+    if (registerForm.password !== registerForm.confirmPassword) throw new Error('pass_mismatch');
+    if (registerForm.password.length < 8) throw new Error('pass_short');
+    if (!registerForm.agreeToTerms) throw new Error('no_terms');
+
+    // регистрация
+    await apiRegister({ email: registerForm.email, password: registerForm.password });
+    // авто-логин
+    await apiLogin({ email: registerForm.email, password: registerForm.password });
+
+    setCurrentUser({
+      id: 'me',
+      email: registerForm.email,
+      firstName: registerForm.firstName || registerForm.email.split('@')[0],
+      lastName: registerForm.lastName || ''
+    });
+    setIsAuthenticated(true);
+
+    if (typeof loadPractices === 'function') {
+      await loadPractices();
+    }
+
+    setCurrentScreen('practices');
+  } catch (e: any) {
+    setAuthError(
+      e.message === 'pass_mismatch' ? 'Пароли не совпадают' :
+      e.message === 'pass_short' ? 'Пароль должен содержать минимум 8 символов' :
+      e.message === 'no_terms'  ? 'Необходимо согласиться с условиями' :
+      'Ошибка регистрации'
+    );
+  } finally {
+    setAuthLoading(false);
+  }
+};
   const handleLogout = () => { apiLogout(); setCurrentUser(null); setIsAuthenticated(false); setCurrentScreen('login'); };
 
   // Get time of day icon
@@ -1189,7 +1193,7 @@ onCheckedChange={async (checked: any) => {
                 type="email"
                 placeholder="your@email.com"
                 value={loginForm.email}
-                onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                onChange={(e) =>setLoginForm(prev => ({ ...prev, email: e.target.value }))}
                 disabled={authLoading}
               />
             </div>
