@@ -6,6 +6,7 @@ from .views import get_users, get_user, register_user, login_user, logout_user
 from drf_yasg import openapi
 from drf_yasg.views import get_schema_view as swagger_get_schema_view
 from rest_framework.permissions import AllowAny
+from ai_agent.views import generate_practices_view
 
 schema_view = swagger_get_schema_view(
     openapi.Info(
@@ -33,4 +34,5 @@ urlpatterns = [
     path('users/registration/', register_user, name='register-user'),
     path('users/login/', login_user, name='login-user'),
     path('users/logout/', logout_user, name='logout-user'),
+    path('practices/generate/', generate_practices_view, name='generate-practices'),
 ] + router.urls

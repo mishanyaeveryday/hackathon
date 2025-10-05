@@ -5,7 +5,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from api.models import PracticeTemplate
 from api.serializers import PracticeTemplateSerializer
-from .ai_client import PracticeGenerator
+from ai_agent.ai_client import PracticeGenerator
+
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
