@@ -5,16 +5,16 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from api.models import User, PracticeTemplate,  DayPlan, Slot, Rating
 from api.serializers import (UserSerializer, PracticeTemplateSerializer,
                 DayPlanSerializer,SlotSerializer, RatingSerializer)
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework import viewsets, permissions
+import random
 
 # Create your views here.
 
@@ -157,7 +157,7 @@ class DayPlanViewSet(viewsets.ModelViewSet):
         if ld:
             qs = qs.filter(local_date=ld)
         return qs.order_by('-local_date')
-    
+
 class SlotViewSet(viewsets.ModelViewSet):
     queryset = Slot.objects.all()
     serializer_class = SlotSerializer
@@ -170,9 +170,28 @@ class SlotViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         day_plan = serializer.validated_data['day_plan']
+
         if day_plan.user != self.request.user:
             raise PermissionDenied("Day plan does not belong to the current user")
-        serializer.save(user=self.request.user) 
+
+        selected_practices = list(
+            PracticeTemplate.objects.filter(
+                user=self.request.user,
+                is_selected=True
+            )
+        )
+
+        random.shuffle(selected_practices)
+        selected_practices = selected_practices[:6]
+
+        created_slots = []
+        for practice in selected_practices:
+            slot = serializer.save(
+                user=self.request.user,
+                user_practice=practice,
+                day_plan=day_plan
+            )
+            created_slots.append(slot)
 
     @action(detail=True, methods=['patch'])
     def start(self, request, pk=None):
