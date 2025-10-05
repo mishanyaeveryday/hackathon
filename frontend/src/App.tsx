@@ -12,9 +12,10 @@ import { Label } from "./components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 import { Skeleton } from "./components/ui/skeleton";
 import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
-  apiGetPracticeTemplates, apiGetUserPractices, apiAddUserPracticeFromTemplate, apiDeleteUserPractice,
+  apiGetPracticeTemplates,
   apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating, 
-  apiListSlots} from './api';
+  apiListSlots,
+  apiUpdatePracticeTemplate} from './api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { 
   Play, 
@@ -45,7 +46,7 @@ type Practice = {
   name: string;
   duration: number;
   description: string;
-  active: boolean;
+  selected: boolean;
 };
 
 type Slot = {
@@ -474,36 +475,6 @@ function formatDuration(lang: Language, duration: number): string {
   return `${duration} ${unit}`;
 }
 
-const getInitialPractices = (lang: Language): Practice[] => [
-  {
-    id: '1',
-    name: practiceTranslations['1'].name[lang],
-    duration: 2,
-    description: practiceTranslations['1'].description[lang],
-    active: true
-  },
-  {
-    id: '2', 
-    name: practiceTranslations['2'].name[lang],
-    duration: 1,
-    description: practiceTranslations['2'].description[lang],
-    active: true
-  },
-  {
-    id: '3',
-    name: practiceTranslations['3'].name[lang],
-    duration: 0.5,
-    description: practiceTranslations['3'].description[lang],
-    active: true
-  }
-];
-
-// Mock data for dashboard
-const mockChartData = [
-  { timeOfDay: 'Утро', mood: 6.2, lightness: 7.1, satisfaction: 5.8, nervousness: 4.3 },
-  { timeOfDay: 'День', mood: 7.5, lightness: 6.8, satisfaction: 7.2, nervousness: 3.9 },
-  { timeOfDay: 'Вечер', mood: 6.9, lightness: 6.2, satisfaction: 6.8, nervousness: 5.1 }
-];
 
 export default function App() {
   // State management
@@ -527,7 +498,7 @@ useEffect(() => { // auto-load practices if tokens exist
   })();
 }, []);
 const [userPracticeByTemplate, setUserPracticeByTemplate] = useState<Record<string,string>>({});
-const [practices, setPractices] = useState<Practice[]>(getInitialPractices(currentLanguage));
+const [practices, setPractices] = useState<Practice[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentSlot, setCurrentSlot] = useState<Slot | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -583,16 +554,14 @@ const [practices, setPractices] = useState<Practice[]>(getInitialPractices(curre
 async function loadPractices() {
   try {
     const templates = await apiGetPracticeTemplates();
-    const ups = await apiGetUserPractices();
     const mapUP: Record<string,string> = {};
-    ups.forEach(up => { mapUP[up.template] = up.id; });
     setUserPracticeByTemplate(mapUP);
     const toPractice = (tpl: any): Practice => ({
       id: tpl.id,
       name: tpl.title,
       duration: (tpl.default_duration_sec ?? 120) / 60,
       description: tpl.description ?? '',
-      active: Boolean(mapUP[tpl.id])
+      selected: Boolean(mapUP[tpl.id])
     });
     setPractices(templates.map(toPractice));
   } catch (e) {
@@ -602,7 +571,7 @@ async function loadPractices() {
 
 // Generate daily plan
   const generateDayPlan = async () => {
-  const activePractices = practices.filter(p => p.active);
+  const activePractices = practices.filter(p => p.selected);
   if (activePractices.length === 0) {
     setSlots([]); 
     setCurrentScreen('practices');
@@ -663,8 +632,8 @@ async function loadPractices() {
     const dtos = await apiListSlots({ day_plan: dayPlanId! });
     const mapped: Slot[] = dtos.map(d => ({
       id: d.id,                                     
-      practiceId: d.user_practice ? ( 
-        Object.keys(userPracticeByTemplate).find(tid => userPracticeByTemplate[tid] === d.user_practice) || null
+      practiceId: d.practice_template ? ( 
+        Object.keys(userPracticeByTemplate).find(tid => userPracticeByTemplate[tid] === d.practice_template) || null
       ) : null,
       timeOfDay: d.time_of_day === 'MORNING' ? 'morning' : d.time_of_day === 'AFTERNOON' ? 'day' : 'evening',
       duration: (d.duration_sec_snapshot ?? 120) / 60,
@@ -944,26 +913,26 @@ const handleRegister = async () => {
                   </Badge>
                 </div>
                 <Checkbox 
-                  checked={practice.active}
+                  checked={practice.selected}
                   
 onCheckedChange={async (checked: any) => {
-                const isActive = !!checked;
-                setPractices(prev => prev.map(p => p.id === practice.id ? { ...p, active: isActive } : p));
-                try {
-                  if (isActive) {
-                    const up = await apiAddUserPracticeFromTemplate(practice.id);
-                    setUserPracticeByTemplate(prev => ({ ...prev, [practice.id]: up.id }));
-                  } else {
-                    const upId = userPracticeByTemplate[practice.id];
-                    if (upId) {
-                      await apiDeleteUserPractice(upId);
-                      setUserPracticeByTemplate(prev => { const next = { ...prev }; delete next[practice.id]; return next; });
-                    }
-                  }
-                } catch (e) {
-                  setPractices(prev => prev.map(p => p.id === practice.id ? { ...p, active: !isActive } : p));
-                }
-              }}
+  const isSelected = !!checked;
+
+  // оптимистично обновим локальное состояние (у тебя поле называется selected — оставляем как «UI-синоним» is_selected)
+  setPractices(prev =>
+    prev.map(p => p.id === practice.id ? { ...p, selected: isSelected } : p)
+  );
+
+  try {
+    // PATCH /practices/:id/ { is_selected: boolean }
+    await apiUpdatePracticeTemplate(practice.id, { is_selected: isSelected });
+  } catch (e) {
+    // откат если бэк не принял
+    setPractices(prev =>
+      prev.map(p => p.id === practice.id ? { ...p, selected: !isSelected } : p)
+    );
+  }
+}}
                   className="mt-1"
                 />
               </div>
@@ -977,7 +946,7 @@ onCheckedChange={async (checked: any) => {
       <div className="text-center">
         <Button 
           onClick={generateDayPlan}
-          disabled={!practices.some(p => p.active)}
+          disabled={!practices.some(p => p.selected)}
           size="lg"
           className="px-8"
         >
@@ -1357,7 +1326,7 @@ onCheckedChange={async (checked: any) => {
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <div className="font-medium">{practice.name}</div>
-              {!practice.active && (
+              {!practice.selected && (
                 <Badge variant="secondary" className="text-xs">
                   {t('copy.profile.inactive', currentLanguage)}
                 </Badge>
@@ -1560,7 +1529,7 @@ onCheckedChange={async (checked: any) => {
                  currentLanguage === 'en' ? 'Practice results' : 'Wyniki praktyk'}
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {practices.filter(p => p.active).map(practice => (
+                {practices.filter(p => p.selected).map(practice => (
                   <Card key={practice.id}>
                     <CardHeader>
                       <CardTitle className="text-lg">{practice.name}</CardTitle>
@@ -1660,10 +1629,10 @@ onCheckedChange={async (checked: any) => {
                   </div>
                 </div>
                 <Switch 
-                  checked={practice.active}
+                  checked={practice.selected}
                   onCheckedChange={(checked: any) => {
                     setPractices(prev => prev.map(p => 
-                      p.id === practice.id ? { ...p, active: checked } : p
+                      p.id === practice.id ? { ...p, selected: checked } : p
                     ));
                   }}
                 />

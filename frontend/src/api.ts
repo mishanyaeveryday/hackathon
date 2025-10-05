@@ -93,7 +93,7 @@ export async function apiLogout() {
 
 /** PRACTICES */
 export type PracticeTemplate = {
-  id: string; title: string; description: string; default_duration_sec: number;
+  id: string; title: string; description: string; default_duration_sec: number; is_selected: boolean;
 };
 export async function apiGetPracticeTemplates(): Promise<PracticeTemplate[]> {
   const r = await request(`/practices/`, { method: 'GET' });
@@ -101,25 +101,16 @@ export async function apiGetPracticeTemplates(): Promise<PracticeTemplate[]> {
   return r.json();
 } // :contentReference[oaicite:11]{index=11}
 
-export type UserPractice = { id: string; template: string; is_active: boolean };
-export async function apiGetUserPractices(): Promise<UserPractice[]> {
-  const r = await request(`/user_practices/`, { method: 'GET' });
-  if (!r.ok) throw new Error('get_user_practices_failed');
-  return r.json();
-} // :contentReference[oaicite:12]{index=12}
-
-export async function apiAddUserPracticeFromTemplate(template_id: string): Promise<UserPractice> {
-  const r = await request(`/user_practices/from-template/`, {
-    method: 'POST',
-    body: JSON.stringify({ template_id })
+export async function apiUpdatePracticeTemplate(
+  id: string,
+  patch: Partial<{ is_selected: boolean; duration_sec: number }>
+): Promise<PracticeTemplate> {
+  const r = await request(`/practices/${id}/`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
   });
-  if (!r.ok) throw new Error('add_user_practice_failed');
+  if (!r.ok) throw new Error('update_practice_failed');
   return r.json();
-} // :contentReference[oaicite:13]{index=13}
-
-export async function apiDeleteUserPractice(user_practice_id: string) {
-  const r = await request(`/user_practices/${user_practice_id}/`, { method: 'DELETE' });
-  if (!r.ok) throw new Error('delete_user_practice_failed');
 }
 
 export type DayPlan = { id: string; local_date: string; timezone: string };
@@ -155,7 +146,7 @@ export async function apiCreateDayPlan(local_date: string, timezone: string): Pr
 
 export type SlotCreate = {
   day_plan: string;
-  user_practice?: string | null;
+  practice_template?: string | null;
   variant: 'DO' | 'CONTROL';
   status: 'PLANNED' | 'IN_PROGRESS' | 'DONE';
   time_of_day: 'MORNING' | 'AFTERNOON' | 'EVENING';
