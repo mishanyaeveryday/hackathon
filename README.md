@@ -73,6 +73,8 @@ DEBUG=TRUE OR FALSE
 NAME_DB = "Your db name"
 USERNAME_DB = "Your username db"
 PASSWORD_DB = "Your password db"
+GEMINI_API_KEY ="Your api key"
+GEMINI_MODEL="Your model"
 
 # Add .env in frontend/src/ and write down
 VITE_API_URL = "Your API url"
@@ -472,5 +474,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **⚠️ Disclaimer**: This is an N=1 experiment platform, not medical advice. Consult healthcare professionals for serious health concerns.
 
 </div>
+
 
 
