@@ -991,7 +991,7 @@ onCheckedChange={async (checked: any) => {
                 <CardHeader>
                   <div className="flex items-center justify-between mb-2">
                     <CardTitle className="text-lg">
-                      {t('copy.slot.title', currentLanguage, { n: (index + 1).toString() })}
+                      {practices.find(p => p.id === slot.practiceId)?.name}
                     </CardTitle>
                     {slot.completed && <CheckCircle className="w-5 h-5 text-green-600" />}
                   </div>
@@ -1012,7 +1012,7 @@ onCheckedChange={async (checked: any) => {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-4">
-                    {t('copy.timer.instruction', currentLanguage)}
+                    {slot.instruction}
                   </p>
                   <Button 
                     onClick={() => startSlot(slot)}
@@ -1043,9 +1043,6 @@ onCheckedChange={async (checked: any) => {
         <div className="text-center">
           <div className="mb-8">
             <h2 className="mb-2">{t('copy.timer.inProgress', currentLanguage)}</h2>
-            <p className="text-muted-foreground">
-              {t('copy.timer.instruction', currentLanguage)}
-            </p>
           </div>
           
           <div className="mb-8">

@@ -168,6 +168,7 @@ export async function apiGenerateSlotsForPlan(dayPlanId: string) {
     body: JSON.stringify({ day_plan: dayPlanId }),
   });
   if (!r.ok) throw new Error('generate_slots_failed');
+  // тело может быть пустым/одним объектом — нам всё равно, мы потом делаем GET
   try { return await r.json(); } catch { return null; }
 }
 
