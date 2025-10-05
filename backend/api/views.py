@@ -102,7 +102,14 @@ class PracticeTemplateViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_staff:
             return PracticeTemplate.objects.all().order_by('-created_at')
-        return PracticeTemplate.objects.filter(user=user, is_selected=True).order_by('-created_at')
+
+        # Для обычного пользователя
+        selected_only = self.request.query_params.get("selected_only", "true").lower() == "true"
+        qs = PracticeTemplate.objects.filter(user=user)
+        if selected_only:
+            qs = qs.filter(is_selected=True)
+        return qs.order_by('-created_at')
+
 
     
 class DayPlanViewSet(viewsets.ModelViewSet):
