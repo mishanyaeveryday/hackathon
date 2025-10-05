@@ -15,7 +15,8 @@ import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
   apiGetPracticeTemplates,
   apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating, 
   apiListSlots,
-  apiUpdatePracticeTemplate} from './api';
+  apiUpdatePracticeTemplate,
+  apiGenerateSlotsForPlan} from './api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { 
   Play, 
@@ -571,9 +572,10 @@ async function loadPractices() {
 
 // Generate daily plan
   const generateDayPlan = async () => {
-  const activePractices = practices.filter(p => p.selected);
-  if (activePractices.length === 0) {
-    setSlots([]); 
+  // (опционально) если локально ничего не выбрано — подскажем выбрать,
+  // но сервер всё равно возьмёт выбранные практики из БД текущего пользователя
+  if (!practices.some(p => p.selected)) {
+    setSlots([]);
     setCurrentScreen('practices');
     return;
   }
@@ -581,73 +583,71 @@ async function loadPractices() {
   const today = new Date().toISOString().slice(0, 10);
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
-  let dayPlanId: string | null = null;
   try {
+    // 1) создаём план дня
     const dp = await apiCreateDayPlan(today, tz);
-    dayPlanId = dp.id;
-  } catch (e) {
-    console.warn('DayPlan create failed; not showing local stub slots', e);
-    setSlots([]);         
-    setCurrentScreen('plan');
-    return;
-  }
 
-  const toServerTimeOfDay = (t: 'morning'|'day'|'evening') =>
-    t === 'morning' ? 'MORNING' : t === 'day' ? 'AFTERNOON' : 'EVENING';
+    // 2) просим сервер СГЕНЕРИТЬ слоты по выбранным практикам
+    //    perform_create на бэке сам сделает 4–6 штук, выставит variant/time_of_day/и т.д.
+    await apiGenerateSlotsForPlan(dp.id);
 
-  const todCycle: ('morning'|'day'|'evening')[] = ['morning','day','evening'];
-  const count = 4 + Math.floor(Math.random() * 3);
-  let doCount = 0, ctrlCount = 0;
+    // 3) получаем реальные слоты этого плана
+    const dtos = await apiListSlots({ day_plan: dp.id });
 
-  for (let i = 0; i < count; i++) {
-    const timeOfDay = todCycle[i % 3];
-    const intendsDo = doCount <= ctrlCount;
-    const practiceId = intendsDo ? (activePractices[Math.floor(Math.random() * activePractices.length)]?.id ?? null) : null;
-    const upId = practiceId ? userPracticeByTemplate[practiceId] : null;
-
-    const isDo = intendsDo && !!upId;
-    if (isDo) doCount++; else ctrlCount++;
-
-    const durationMin = isDo ? (practices.find(p => p.id === practiceId)?.duration ?? 2) : 2;
-
-    const payload: any = {
-      day_plan: dayPlanId!,
-      variant: isDo ? 'DO' : 'CONTROL',
-      status: 'PLANNED',
-      time_of_day: toServerTimeOfDay(timeOfDay),
-      scheduled_at_utc: new Date(Date.now() + (i+1)*60*60*1000).toISOString(),
-      duration_sec_snapshot: Math.round(durationMin * 60),
-      display_payload: { neutral_instruction: t('copy.timer.instruction', currentLanguage) }
+    // 4) мапим в наш фронтовый тип
+    const toClientTimeOfDay = (v?: string): 'morning' | 'day' | 'evening' => {
+      if (v === 'MORNING') return 'morning';
+      if (v === 'AFTERNOON') return 'day';
+      if (v === 'EVENING') return 'evening';
+      return 'day';
     };
-    if (isDo && upId) payload.user_practice = upId; 
 
-    try {
-      await apiCreateSlot(payload);
-    } catch (e) {
-      console.warn('Create slot failed', e);
-    }
-  }
+    const mapped: Slot[] = (dtos || []).map((d: any) => {
+      // сервер может вернуть ссылку на практику по-разному: как UUID или как объект
+      const rawPractice =
+        d.practice_template ?? d.user_practice ?? d.template ?? d.practice ?? null;
 
-  try {
-    const dtos = await apiListSlots({ day_plan: dayPlanId! });
-    const mapped: Slot[] = dtos.map(d => ({
-      id: d.id,                                     
-      practiceId: d.practice_template ? ( 
-        Object.keys(userPracticeByTemplate).find(tid => userPracticeByTemplate[tid] === d.practice_template) || null
-      ) : null,
-      timeOfDay: d.time_of_day === 'MORNING' ? 'morning' : d.time_of_day === 'AFTERNOON' ? 'day' : 'evening',
-      duration: (d.duration_sec_snapshot ?? 120) / 60,
-      completed: d.status === 'DONE',
-      date: (d.scheduled_at_utc || '').slice(0, 10) || today,
-      instruction: d.display_payload?.neutral_instruction || t('copy.timer.instruction', currentLanguage),
-      serverId: d.id
-    }));
+      const practiceId =
+        rawPractice == null
+          ? null
+          : typeof rawPractice === 'string'
+          ? rawPractice
+          : (rawPractice.id ? String(rawPractice.id) : null);
+
+      const timeOfDay =
+        d.time_of_day ? toClientTimeOfDay(String(d.time_of_day)) : 'day';
+
+      const durationMin =
+        (typeof d.duration_sec_snapshot === 'number'
+          ? d.duration_sec_snapshot
+          : 120) / 60;
+
+      const iso = d.scheduled_at_utc || null;
+      const date = iso ? String(iso).slice(0, 10) : today;
+
+      const instruction =
+        d.display_payload?.neutral_instruction ||
+        t('copy.timer.instruction', currentLanguage);
+
+      return {
+        id: String(d.id),
+        serverId: String(d.id),
+        practiceId,
+        timeOfDay,
+        duration: durationMin,
+        completed: d.status === 'DONE',
+        date,
+        instruction,
+      };
+    });
+
     setSlots(mapped);
-  } catch {
-    setSlots([]); 
+    setCurrentScreen('plan');
+  } catch (e) {
+    console.warn('generateDayPlan failed', e);
+    setSlots([]);
+    setCurrentScreen('plan');
   }
-
-  setCurrentScreen('plan');
 };
 
 

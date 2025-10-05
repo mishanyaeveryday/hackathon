@@ -161,6 +161,16 @@ export async function apiListSlots(params?: { day_plan?: string }) : Promise<Slo
   if (!r.ok) throw new Error('list_slots_failed');
   return r.json();
 }
+
+export async function apiGenerateSlotsForPlan(dayPlanId: string) {
+  const r = await request(`/slots/`, {
+    method: 'POST',
+    body: JSON.stringify({ day_plan: dayPlanId }),
+  });
+  if (!r.ok) throw new Error('generate_slots_failed');
+  try { return await r.json(); } catch { return null; }
+}
+
 export async function apiCreateSlot(payload: SlotCreate): Promise<Slot> {
   const r = await request(`/slots/`, { method: 'POST', body: JSON.stringify(payload) });
   if (!r.ok) throw new Error('create_slot_failed');

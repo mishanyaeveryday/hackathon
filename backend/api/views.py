@@ -104,7 +104,7 @@ class PracticeTemplateViewSet(viewsets.ModelViewSet):
             return PracticeTemplate.objects.all().order_by('-created_at')
 
         # Для обычного пользователя
-        selected_only = self.request.query_params.get("selected_only", "true").lower() == "true"
+        selected_only = self.request.query_params.get("selected_only", "false").lower() == "true"
         qs = PracticeTemplate.objects.filter(user=user)
         if selected_only:
             qs = qs.filter(is_selected=True)
