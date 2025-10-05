@@ -16,6 +16,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework import viewsets, permissions
 import random
 from datetime import timedelta
+from django.db.models import Avg, Q
 
 # Create your views here.
 
@@ -173,43 +174,42 @@ class SlotViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         day_plan_id = request.data.get('day_plan')
         if not day_plan_id:
-            return Response(
-                {"detail": "Field 'day_plan' is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"detail": "Field 'day_plan' is required"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         try:
             day_plan = DayPlan.objects.get(id=day_plan_id, user=request.user)
         except DayPlan.DoesNotExist:
             raise PermissionDenied(
                 "Day plan does not belong to the current user")
 
-        selected_practices = list(
-            PracticeTemplate.objects.filter(
-                user=request.user, is_selected=True)
+        avg_rating = Rating.objects.filter(slot__user=request.user).aggregate(
+            avg_mood=Avg('mood'),
+            avg_ease=Avg('ease'),
+            avg_satisfaction=Avg('satisfaction'),
+            avg_nervousness=Avg('nervousness'),
         )
 
-        if not selected_practices:
-            return Response(
-                {"detail": "No selected practices found for user."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        overall_avg = ((avg_rating['avg_mood'] or 0) +
+                       (avg_rating['avg_satisfaction'] or 0) +
+                       (avg_rating['avg_ease'] or 0) +
+                       (avg_rating['avg_nervousnes'] or 0)) / 2
 
-        random.shuffle(selected_practices)
-        selected_practices = selected_practices[:6]
+        candidate_slots = Slot.objects.filter(user=request.user).filter(
+            Q(rating__isnull=True) |
+            Q(rating__mood__gte=overall_avg) |
+            Q(rating__satisfaction__gte=overall_avg)
+        ).distinct()
 
-        created_slots = []
-        for i, practice in enumerate(selected_practices):
-            slot = Slot.objects.create(
-                user=request.user,
-                day_plan=day_plan,
-                user_practice=practice,
-                time_of_day=random.choice(['MORNING', 'AFTERNOON', 'EVENING']),
-                scheduled_at_utc=timezone.now() + timedelta(hours=i)
-            )
-            created_slots.append(slot)
+        if not candidate_slots.exists():
+            return Response({"detail": "No eligible slots found."}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = self.get_serializer(created_slots, many=True)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        candidate_slots = list(candidate_slots)
+        random.shuffle(candidate_slots)
+        selected_slots = candidate_slots[:6]
+
+        serializer = self.get_serializer(selected_slots, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['patch'])
     def start(self, request, pk=None):
