@@ -35,6 +35,13 @@ async function refreshAccessToken() {
   localStorage.setItem('access', data.access);
 }
 
+export async function apiFindTodayPlan() {
+  const today = new Date().toISOString().slice(0, 10);
+  const r = await request(`/day_plan/?local_date=${encodeURIComponent(today)}`, { method: 'GET' });
+  if (!r.ok) return [];
+  return r.json();
+}
+
 async function request(path: string, init: RequestInit = {}, retry = true) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any) };
   if (tokens?.access) headers.Authorization = `Bearer ${tokens.access}`;

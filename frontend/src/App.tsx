@@ -17,7 +17,8 @@ import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
   apiListSlots,
   apiUpdatePracticeTemplate,
   apiGenerateSlotsForPlan,
-  apiGeneratePractices} from './api';
+  apiGeneratePractices,
+  apiFindTodayPlan} from './api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { 
   Play, 
@@ -499,6 +500,41 @@ useEffect(() => { // auto-load practices if tokens exist
     } catch {}
   })();
 }, []);
+useEffect(() => {
+  if (!isAuthenticated || slots.length) return;
+
+  (async () => {
+    try {
+      const plans = await apiFindTodayPlan();
+      if (!Array.isArray(plans) || !plans.length) return;
+
+      const dp = plans[0];
+      const dtos = await apiListSlots({ day_plan: dp.id });
+
+      const toTOD = (v?: string) =>
+        String(v || '').toUpperCase() === 'MORNING' ? 'morning' :
+        String(v || '').toUpperCase() === 'AFTERNOON' ? 'day' : 'evening';
+
+      const todayISO = new Date().toISOString().slice(0, 10);
+      const mapped: Slot[] = (dtos || []).map((d: any) => ({
+        id: String(d.id),
+        serverId: String(d.id),
+        practiceId: d.user_practice ? (typeof d.user_practice === 'string' ? d.user_practice : String(d.user_practice.id ?? d.user_practice)) : null,
+        timeOfDay: toTOD(d.time_of_day),
+        duration: (d.duration_sec_snapshot ?? 120) / 60,
+        completed: d.status === 'DONE',
+        date: String(d.scheduled_at_utc || '').slice(0, 10) || todayISO,
+        instruction: d.display_payload?.neutral_instruction || t('copy.timer.instruction', currentLanguage),
+      }));
+
+      setSlots(mapped);
+      setCurrentScreen('plan'); // сразу показываем слоты
+    } catch (e) {
+      console.warn('auto-show today plan failed', e);
+    }
+  })();
+}, [isAuthenticated]);
+
 const [userPracticeByTemplate, setUserPracticeByTemplate] = useState<Record<string,string>>({});
 const [practices, setPractices] = useState<Practice[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
