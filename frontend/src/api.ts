@@ -1,7 +1,7 @@
 // src/api.ts
 export type Language = 'ru' | 'en' | 'pl';
 
-const API_URL = import.meta.env.VITE_API_URL?.replace(/\/+$/, '') || 'http://13.61.151.254:8000/api';
+const API_URL = import.meta.env.VITE_API_URL?.replace(/\/+$/, '') || 'http://127.0.0.1:8000/api';
 
 type Tokens = { access: string; refresh: string };
 let tokens: Tokens | null = null;
@@ -165,7 +165,7 @@ export async function apiListSlots(params?: { day_plan?: string }) : Promise<Slo
 export async function apiGeneratePractices(prompt: string) {
   const r = await request(`/practices/generate/`, {
     method: 'POST',
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ message: prompt }),
   });
   if (!r.ok) throw new Error('generate_practices_failed');
   return r.json(); // массив практик {id,title,description,default_duration_sec,is_selected}
