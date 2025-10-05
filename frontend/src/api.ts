@@ -35,13 +35,6 @@ async function refreshAccessToken() {
   localStorage.setItem('access', data.access);
 }
 
-export async function apiFindTodayPlan() {
-  const today = new Date().toISOString().slice(0, 10);
-  const r = await request(`/day_plan/?local_date=${encodeURIComponent(today)}`, { method: 'GET' });
-  if (!r.ok) return [];
-  return r.json();
-}
-
 async function request(path: string, init: RequestInit = {}, retry = true) {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(init.headers as any) };
   if (tokens?.access) headers.Authorization = `Bearer ${tokens.access}`;
@@ -59,13 +52,23 @@ async function request(path: string, init: RequestInit = {}, retry = true) {
 }
 
 /** AUTH */
-export async function apiRegister({ email, password }: { email: string; password: string; firstName?: string; lastName?: string; }) {
-  // backend ждёт username+email+password; используем email как username
+export async function apiRegister({ email, password, firstName, lastName }: { email: string; password: string; firstName?: string; lastName?: string; }) {
+  // backend ждёт username+email+password+first_name+last_name; используем email как username
   const r = await request(`/users/registration/`, {
     method: 'POST',
-    body: JSON.stringify({ username: email, email, password })
+    body: JSON.stringify({ 
+      username: email, 
+      email, 
+      password,
+      first_name: firstName || '',
+      last_name: lastName || ''
+    })
   });
-  if (!r.ok) throw new Error((await r.json()).error || 'register_failed');
+  if (!r.ok) {
+    const errorData = await r.json();
+    console.error('Registration API error:', errorData);
+    throw new Error(errorData.error || 'register_failed');
+  }
   return r.json(); // { message: string }
 } // :contentReference[oaicite:9]{index=9}
 
@@ -118,6 +121,12 @@ export async function apiUpdatePracticeTemplate(
   });
   if (!r.ok) throw new Error('update_practice_failed');
   return r.json();
+}
+
+export async function apiDeletePracticeTemplate(id: string) {
+  const r = await request(`/practices/${id}/`, { method: 'DELETE' });
+  if (!r.ok) throw new Error('delete_practice_failed');
+  return r.ok;
 }
 
 export type DayPlan = { id: string; local_date: string; timezone: string };
@@ -205,6 +214,12 @@ export async function apiFinishSlot(slotId: string) {
   if (!r.ok) throw new Error('finish_slot_failed');
   return r.json();
 } // :contentReference[oaicite:17]{index=17}
+
+export async function apiDeleteSlot(slotId: string) {
+  const r = await request(`/slots/${slotId}/`, { method: 'DELETE' });
+  if (!r.ok) throw new Error('delete_slot_failed');
+  return r.ok;
+}
 
 /** RATINGS */
 export async function apiCreateRating(payload: {
