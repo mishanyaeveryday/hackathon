@@ -16,7 +16,8 @@ import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
   apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating, 
   apiListSlots,
   apiUpdatePracticeTemplate,
-  apiGenerateSlotsForPlan} from './api';
+  apiGenerateSlotsForPlan,
+  apiGeneratePractices} from './api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { 
   Play, 
@@ -878,7 +879,68 @@ const handleRegister = async () => {
   };
 
   // Practice Selection Screen
-  const PracticeSelection = () => (
+const PracticeSelection = () => {
+  const [genPrompt, setGenPrompt] = useState('');
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  const formatMinutes = (m: number) => {
+    const v = Number.isFinite(m) ? m : 0;
+    const rounded = Math.round(v * 10) / 10;
+    // если почти целое — показываем как целое
+    return Math.abs(rounded - Math.round(rounded)) < 0.05
+      ? `${Math.round(rounded)} ${currentLanguage === 'ru' ? 'мин' : 'min'}`
+      : `${rounded} ${currentLanguage === 'ru' ? 'мин' : 'min'}`;
+  };
+
+  const genBtnText =
+    currentLanguage === 'ru' ? 'Сгенерировать' :
+    currentLanguage === 'pl' ? 'Wygeneruj' : 'Generate';
+
+  const genPlaceholder =
+    currentLanguage === 'ru'
+      ? 'Опишите: дыхательные 1–3 мин, без оборудования…'
+      : currentLanguage === 'pl'
+      ? 'Opisz: oddech 1–3 min, bez sprzętu…'
+      : 'Describe: breathing 1–3 min, no equipment…';
+
+  async function handleGeneratePractices() {
+    if (!genPrompt.trim()) return;
+    setGenLoading(true);
+    setGenError(null);
+    try {
+      const resp = await apiGeneratePractices(genPrompt.trim()); // <- POST /practices/generate/
+      // нормализация к локальному типу Practice
+      const normalized = (resp || []).map((tpl: any) => ({
+        id: String(tpl.id),
+        name: tpl.title || '—',
+        description: tpl.description || '',
+        duration: Math.max(0.5, (Number(tpl.default_duration_sec ?? 120) / 60)),
+        selected: !!tpl.is_selected,
+      }));
+
+      // мердж без дублей по id
+      setPractices(prev => {
+        const map = new Map(prev.map(p => [p.id, p]));
+        for (const p of normalized) map.set(p.id, p);
+        return Array.from(map.values());
+      });
+      setGenPrompt('');
+    } catch (e: any) {
+      setGenError(
+        currentLanguage === 'ru'
+          ? 'Не удалось сгенерировать практики'
+          : currentLanguage === 'pl'
+          ? 'Nie udało się wygenerować praktyk'
+          : 'Failed to generate practices'
+      );
+      console.warn('generate_practices_failed', e);
+    } finally {
+      setGenLoading(false);
+    }
+  }
+
+  return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="text-center mb-8">
         <h2 className="mb-4">{t('copy.practices.title', currentLanguage)}</h2>
@@ -886,58 +948,75 @@ const handleRegister = async () => {
           {t('copy.practices.subtitle', currentLanguage)}
         </p>
       </div>
-      
+
+      {/* Панель генерации практик */}
+      <div className="mb-6 flex items-start gap-2">
+        <Input
+          value={genPrompt}
+          onChange={(e) => setGenPrompt(e.target.value)}
+          placeholder={genPlaceholder}
+          disabled={genLoading}
+          className="flex-1"
+        />
+        <Button
+          onClick={handleGeneratePractices}
+          disabled={genLoading || !genPrompt.trim()}
+        >
+          {genLoading ? (currentLanguage === 'ru' ? 'Генерация…' : currentLanguage === 'pl' ? 'Generowanie…' : 'Generating…') : genBtnText}
+        </Button>
+      </div>
+      {genError && (
+        <div className="mb-6 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+          {genError}
+        </div>
+      )}
+
       <div className="mb-8">
         <div className="max-h-[60vh] overflow-y-auto pr-2 overscroll-contain thin-scrollbar">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {practices.map(practice => (
-          <Card key={practice.id} className="relative">
-            <CardHeader className="pb-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-lg mb-2">{practice.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground mb-3">{practice.description}</p>
-                  <Badge variant="outline" className="text-xs">
-                    {practice.duration === 0.5 ? 
-                      (currentLanguage === 'ru' ? '30 сек' : 
-                       currentLanguage === 'en' ? '30 sec' : '30 sek') : 
-                      `${practice.duration} ${currentLanguage === 'ru' ? 'мин' : 
-                                             currentLanguage === 'en' ? 'min' : 'min'}`}
-                  </Badge>
-                </div>
-                <Checkbox 
-                  checked={practice.selected}
-                  
-onCheckedChange={async (checked: any) => {
-  const isSelected = !!checked;
+            {practices.map((practice) => (
+              <Card key={practice.id} className="relative">
+                <CardHeader className="pb-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <CardTitle className="text-lg mb-2">{practice.name}</CardTitle>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        {practice.description}
+                      </p>
+                      <Badge variant="outline" className="text-xs">
+                        {formatMinutes(practice.duration)}
+                      </Badge>
+                    </div>
 
-  // оптимистично обновим локальное состояние (у тебя поле называется selected — оставляем как «UI-синоним» is_selected)
-  setPractices(prev =>
-    prev.map(p => p.id === practice.id ? { ...p, selected: isSelected } : p)
-  );
-
-  try {
-    // PATCH /practices/:id/ { is_selected: boolean }
-    await apiUpdatePracticeTemplate(practice.id, { is_selected: isSelected });
-  } catch (e) {
-    // откат если бэк не принял
-    setPractices(prev =>
-      prev.map(p => p.id === practice.id ? { ...p, selected: !isSelected } : p)
-    );
-  }
-}}
-                  className="mt-1"
-                />
-              </div>
-            </CardHeader>
-          </Card>
-        ))}
+                    <Checkbox
+                      checked={practice.selected}
+                      onCheckedChange={async (checked: any) => {
+                        const isSelected = !!checked;
+                        // оптимистично обновим UI
+                        setPractices(prev =>
+                          prev.map(p => p.id === practice.id ? { ...p, selected: isSelected } : p)
+                        );
+                        try {
+                          await apiUpdatePracticeTemplate(practice.id, { is_selected: isSelected });
+                        } catch {
+                          // откат при ошибке
+                          setPractices(prev =>
+                            prev.map(p => p.id === practice.id ? { ...p, selected: !isSelected } : p)
+                          );
+                        }
+                      }}
+                      className="mt-1"
+                    />
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
-                </div>
-                </div>
-      
+
       <div className="text-center">
-        <Button 
+        <Button
           onClick={generateDayPlan}
           disabled={!practices.some(p => p.selected)}
           size="lg"
@@ -948,6 +1027,7 @@ onCheckedChange={async (checked: any) => {
       </div>
     </div>
   );
+};
 
   // Day Plan Screen
   const DayPlan = () => {

@@ -162,6 +162,15 @@ export async function apiListSlots(params?: { day_plan?: string }) : Promise<Slo
   return r.json();
 }
 
+export async function apiGeneratePractices(prompt: string) {
+  const r = await request(`/practices/generate/`, {
+    method: 'POST',
+    body: JSON.stringify({ prompt }),
+  });
+  if (!r.ok) throw new Error('generate_practices_failed');
+  return r.json(); // массив практик {id,title,description,default_duration_sec,is_selected}
+}
+
 export async function apiGenerateSlotsForPlan(dayPlanId: string) {
   const r = await request(`/slots/`, {
     method: 'POST',
