@@ -48,6 +48,8 @@ def register_user(request):
     username = request.data.get('username')
     password = request.data.get('password')
     email = request.data.get('email')
+    first_name = request.data.get('first_name', '')
+    last_name = request.data.get('last_name', '')
 
     if not username or not email or not password:
         return Response({'error': 'Username, email and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -58,7 +60,12 @@ def register_user(request):
         return Response({'error': 'Email already taken.'}, status=status.HTTP_400_BAD_REQUEST)
 
     user = User.objects.create_user(
-        username=username, password=password, email=email)
+        username=username, 
+        password=password, 
+        email=email,
+        first_name=first_name,
+        last_name=last_name
+    )
 
     return Response({'message': 'User registered successfully.'}, status=status.HTTP_201_CREATED)
 
@@ -212,7 +219,8 @@ class SlotViewSet(viewsets.ModelViewSet):
                 day_plan=day_plan,
                 user_practice=practice,
                 time_of_day=random.choice(['MORNING', 'AFTERNOON', 'EVENING']),
-                scheduled_at_utc=timezone.now() + timedelta(hours=i)
+                scheduled_at_utc=timezone.now() + timedelta(hours=i),
+                duration_sec_snapshot=practice.default_duration_sec or 120  # Capture practice duration
             )
             created_slots.append(slot)
 
