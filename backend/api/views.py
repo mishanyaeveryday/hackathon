@@ -94,9 +94,7 @@ class PracticeTemplateViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """Only admin ability for modifications"""
-        if self.action in ['destroy']:
-            return [permissions.IsAdminUser()]
-        elif self.action in ['create', 'update', 'partial_update']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [permissions.IsAuthenticated()]
         return [permissions.AllowAny()] 
 

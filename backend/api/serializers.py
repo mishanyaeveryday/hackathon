@@ -19,6 +19,13 @@ class DayPlanSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 class SlotSerializer(serializers.ModelSerializer):
+    practice_template = serializers.PrimaryKeyRelatedField(
+        source='user_practice',
+        queryset=PracticeTemplate.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
     class Meta:
         model = Slot
         fields = '__all__'
