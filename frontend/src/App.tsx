@@ -584,17 +584,11 @@ async function loadPractices() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   try {
-    // 1) создаём план дня
     const dp = await apiCreateDayPlan(today, tz);
-
-    // 2) просим сервер СГЕНЕРИТЬ слоты по выбранным практикам
-    //    perform_create на бэке сам сделает 4–6 штук, выставит variant/time_of_day/и т.д.
     await apiGenerateSlotsForPlan(dp.id);
 
-    // 3) получаем реальные слоты этого плана
     const dtos = await apiListSlots({ day_plan: dp.id });
 
-    // 4) мапим в наш фронтовый тип
     const toClientTimeOfDay = (v?: string): 'morning' | 'day' | 'evening' => {
       if (v === 'MORNING') return 'morning';
       if (v === 'AFTERNOON') return 'day';
@@ -603,7 +597,6 @@ async function loadPractices() {
     };
 
     const mapped: Slot[] = (dtos || []).map((d: any) => {
-      // сервер может вернуть ссылку на практику по-разному: как UUID или как объект
       const rawPractice =
         d.practice_template ?? d.user_practice ?? d.template ?? d.practice ?? null;
 
