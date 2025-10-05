@@ -174,14 +174,47 @@ class SlotViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         day_plan_id = request.data.get('day_plan')
         if not day_plan_id:
-            return Response({"detail": "Field 'day_plan' is required"},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Field 'day_plan' is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             day_plan = DayPlan.objects.get(id=day_plan_id, user=request.user)
         except DayPlan.DoesNotExist:
             raise PermissionDenied(
                 "Day plan does not belong to the current user")
+
+        existing_practice_ids = Slot.objects.filter(
+            user=request.user, day_plan=day_plan
+        ).values_list('user_practice_id', flat=True)
+
+        available_practices = list(
+            PracticeTemplate.objects.filter(
+                user=request.user,
+                is_selected=True
+            ).exclude(id__in=existing_practice_ids)
+        )
+
+        if not available_practices:
+            return Response(
+                {"detail": "No selected practices available."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        random.shuffle(available_practices)
+        selected_practices = available_practices[:6]
+
+        created_slots = []
+        for i, practice in enumerate(selected_practices):
+            slot = Slot.objects.create(
+                user=request.user,
+                day_plan=day_plan,
+                user_practice=practice,
+                time_of_day=random.choice(['MORNING', 'AFTERNOON', 'EVENING']),
+                scheduled_at_utc=timezone.now() + timedelta(hours=i)
+            )
+            created_slots.append(slot)
 
         avg_rating = Rating.objects.filter(slot__user=request.user).aggregate(
             avg_mood=Avg('mood'),
@@ -190,20 +223,18 @@ class SlotViewSet(viewsets.ModelViewSet):
             avg_nervousness=Avg('nervousness'),
         )
 
-        overall_avg = ((avg_rating['avg_mood'] or 0) +
-                       (avg_rating['avg_satisfaction'] or 0) +
-                       (avg_rating['avg_ease'] or 0) +
-                       (avg_rating['avg_nervousnes'] or 0)) / 2
+        overall_avg = sum([
+            avg_rating['avg_mood'] or 0,
+            avg_rating['avg_ease'] or 0,
+            avg_rating['avg_satisfaction'] or 0,
+            avg_rating['avg_nervousness'] or 0
+        ]) / 4
 
         candidate_slots = Slot.objects.filter(user=request.user).filter(
             Q(rating__isnull=True) |
             Q(rating__mood__gte=overall_avg) |
             Q(rating__satisfaction__gte=overall_avg)
         ).distinct()
-
-        if not candidate_slots.exists():
-            return Response({"detail": "No eligible slots found."}, status=status.HTTP_400_BAD_REQUEST)
-
         candidate_slots = list(candidate_slots)
         random.shuffle(candidate_slots)
         selected_slots = candidate_slots[:6]
