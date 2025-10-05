@@ -13,12 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Skeleton } from "./components/ui/skeleton";
 import { loadTokensFromStorage, apiLogin, apiRegister, apiLogout,
   apiGetPracticeTemplates,
-  apiCreateDayPlan, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating, 
+  apiCreateDayPlan, apiGetDayPlanByDate, apiCreateSlot, apiStartSlot, apiFinishSlot, apiCreateRating, 
   apiListSlots,
   apiUpdatePracticeTemplate,
   apiGenerateSlotsForPlan,
   apiGeneratePractices,
-  apiFindTodayPlan} from './api';
+  apiDeleteSlot,
+  apiDeletePracticeTemplate} from './api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { 
   Play, 
@@ -500,48 +501,174 @@ useEffect(() => { // auto-load practices if tokens exist
     } catch {}
   })();
 }, []);
-useEffect(() => {
-  if (!isAuthenticated || slots.length) return;
-
-  (async () => {
-    try {
-      const plans = await apiFindTodayPlan();
-      if (!Array.isArray(plans) || !plans.length) return;
-
-      const dp = plans[0];
-      const dtos = await apiListSlots({ day_plan: dp.id });
-
-      const toTOD = (v?: string) =>
-        String(v || '').toUpperCase() === 'MORNING' ? 'morning' :
-        String(v || '').toUpperCase() === 'AFTERNOON' ? 'day' : 'evening';
-
-      const todayISO = new Date().toISOString().slice(0, 10);
-      const mapped: Slot[] = (dtos || []).map((d: any) => ({
-        id: String(d.id),
-        serverId: String(d.id),
-        practiceId: d.user_practice ? (typeof d.user_practice === 'string' ? d.user_practice : String(d.user_practice.id ?? d.user_practice)) : null,
-        timeOfDay: toTOD(d.time_of_day),
-        duration: (d.duration_sec_snapshot ?? 120) / 60,
-        completed: d.status === 'DONE',
-        date: String(d.scheduled_at_utc || '').slice(0, 10) || todayISO,
-        instruction: d.display_payload?.neutral_instruction || t('copy.timer.instruction', currentLanguage),
-      }));
-
-      setSlots(mapped);
-      setCurrentScreen('plan'); // сразу показываем слоты
-    } catch (e) {
-      console.warn('auto-show today plan failed', e);
-    }
-  })();
-}, [isAuthenticated]);
-
 const [userPracticeByTemplate, setUserPracticeByTemplate] = useState<Record<string,string>>({});
 const [practices, setPractices] = useState<Practice[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [currentSlot, setCurrentSlot] = useState<Slot | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [historyData, setHistoryData] = useState<{date: string, slots: Slot[], completed: number}[]>([]);
   const [timerState, setTimerState] = useState<TimerState>('idle');
   const [timeRemaining, setTimeRemaining] = useState(0);
+
+  // Cookie-based persistence functions
+  const saveToCookies = (key: string, data: any) => {
+    try {
+      const serialized = JSON.stringify(data);
+      document.cookie = `${key}=${encodeURIComponent(serialized)}; path=/; max-age=${60 * 60 * 24 * 30}`; // 30 days
+      console.log(`Saved to cookies: ${key}`, data);
+    } catch (e) {
+      console.warn(`Failed to save to cookies: ${key}`, e);
+    }
+  };
+
+  const loadFromCookies = (key: string) => {
+    try {
+      const cookies = document.cookie.split(';');
+      const cookie = cookies.find(c => c.trim().startsWith(`${key}=`));
+      if (cookie) {
+        const value = cookie.split('=')[1];
+        const decoded = decodeURIComponent(value);
+        const parsed = JSON.parse(decoded);
+        console.log(`Loaded from cookies: ${key}`, parsed);
+        return parsed;
+      }
+    } catch (e) {
+      console.warn(`Failed to load from cookies: ${key}`, e);
+    }
+    return null;
+  };
+
+  const clearCookie = (key: string) => {
+    document.cookie = `${key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  };
+
+  // Format duration for display
+  const formatMinutes = (m: number) => {
+    const v = Number.isFinite(m) ? m : 0;
+    const unitMin = currentLanguage === 'ru' ? 'мин' : 'min';
+    const unitSec = currentLanguage === 'ru' ? 'сек' : 'sec';
+
+    // If duration is less than 1 minute, convert to seconds
+    if (v < 1) {
+      const seconds = Math.round(v * 60);
+      return `${seconds} ${unitSec}`;
+    }
+
+    // For 1 minute or more, display in minutes
+    const rounded = Math.round(v * 10) / 10; // Round to one decimal place
+    // If it's almost a whole number, display as a whole number
+    return Math.abs(rounded - Math.round(rounded)) < 0.05
+      ? `${Math.round(rounded)} ${unitMin}`
+      : `${rounded} ${unitMin}`;
+  };
+
+  // Reset all user data except account
+  const resetUserData = async () => {
+    if (!confirm(currentLanguage === 'ru' ? 
+      'Вы уверены, что хотите удалить все данные? Это действие нельзя отменить.' :
+      currentLanguage === 'en' ? 
+      'Are you sure you want to delete all data? This action cannot be undone.' :
+      'Czy na pewno chcesz usunąć wszystkie dane? Ta akcja nie może zostać cofnięta.')) {
+      return;
+    }
+
+    try {
+      console.log('Resetting all user data...');
+      
+      // Clear all cookies
+      clearCookie('dayPlanSlots');
+      clearCookie('practices');
+      clearCookie('historyData');
+      clearCookie('timerState');
+      
+      // Clear localStorage
+      localStorage.removeItem('timerState');
+      
+      // Reset all state
+      setSlots([]);
+      setPractices([]);
+      setHistoryData([]);
+      setCurrentSlot(null);
+      setTimeRemaining(0);
+      setTimerState('idle');
+      setAssessments([]);
+      setShowAssessment(false);
+      
+      // Delete all practices from backend
+      const allPractices = await apiGetPracticeTemplates();
+      if (allPractices.length > 0) {
+        console.log(`Deleting ${allPractices.length} practices from backend...`);
+        await Promise.all(
+          allPractices.map(practice =>
+            apiDeletePracticeTemplate(practice.id).catch(err =>
+              console.warn(`Failed to delete practice ${practice.id}:`, err)
+            )
+          )
+        );
+      }
+      
+      // Delete all slots from backend
+      const allSlots = await apiListSlots();
+      if (allSlots.length > 0) {
+        console.log(`Deleting ${allSlots.length} slots from backend...`);
+        await Promise.all(
+          allSlots.map(slot =>
+            apiDeleteSlot(slot.id).catch(err =>
+              console.warn(`Failed to delete slot ${slot.id}:`, err)
+            )
+          )
+        );
+      }
+      
+      console.log('✓ All user data reset successfully');
+      alert(currentLanguage === 'ru' ? 
+        'Все данные успешно удалены!' :
+        currentLanguage === 'en' ? 
+        'All data has been successfully deleted!' :
+        'Wszystkie dane zostały pomyślnie usunięte!');
+        
+    } catch (error) {
+      console.error('Failed to reset user data:', error);
+      alert(currentLanguage === 'ru' ? 
+        'Ошибка при удалении данных. Попробуйте еще раз.' :
+        currentLanguage === 'en' ? 
+        'Error deleting data. Please try again.' :
+        'Błąd podczas usuwania danych. Spróbuj ponownie.');
+    }
+  };
+
+  // Refresh history data from current slots
+  const refreshHistoryFromSlots = () => {
+    if (slots.length === 0) return;
+    
+    const today = new Date().toISOString().slice(0, 10);
+    setHistoryData(prev => {
+      const existingDayIndex = prev.findIndex(day => day.date === today);
+      const completedCount = slots.filter(s => s.completed).length;
+      
+      if (existingDayIndex >= 0) {
+        // Update existing day with current slots
+        const updatedDay = {
+          ...prev[existingDayIndex],
+          slots: slots,
+          completed: completedCount
+        };
+        const newHistory = [...prev];
+        newHistory[existingDayIndex] = updatedDay;
+        console.log('Refreshed history for existing day:', updatedDay);
+        return newHistory;
+      } else {
+        // Add new day with current slots
+        const newDay = {
+          date: today,
+          slots: slots,
+          completed: completedCount
+        };
+        console.log('Created new history day from slots:', newDay);
+        return [newDay, ...prev].slice(0, 30);
+      }
+    });
+  };
   const [showAssessment, setShowAssessment] = useState(false);
   const [assessment, setAssessment] = useState({
     mood: [5],
@@ -568,6 +695,179 @@ const [practices, setPractices] = useState<Practice[]>([]);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  // Timer state persistence
+  const saveTimerState = () => {
+    if (currentSlot && timerState !== 'idle') {
+      const timerData = {
+        slotId: currentSlot.id,
+        timeRemaining,
+        timerState,
+        timestamp: Date.now()
+      };
+      localStorage.setItem('timerState', JSON.stringify(timerData));
+    }
+  };
+
+  const loadTimerState = () => {
+    try {
+      const saved = localStorage.getItem('timerState');
+      if (saved) {
+        const timerData = JSON.parse(saved);
+        // Only restore if it's from today and less than 24 hours old
+        if (Date.now() - timerData.timestamp < 24 * 60 * 60 * 1000) {
+          // Find the slot
+          const slot = slots.find(s => s.id === timerData.slotId);
+          if (slot) {
+            setCurrentSlot(slot);
+            setTimeRemaining(timerData.timeRemaining);
+            setTimerState(timerState === 'completed' ? 'idle' : timerData.timerState);
+            console.log('Restored timer state:', timerData);
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load timer state:', e);
+    }
+    return false;
+  };
+
+  // Save timer state when it changes
+  useEffect(() => {
+    saveTimerState();
+  }, [currentSlot, timeRemaining, timerState]);
+
+  // Save slots to cookies whenever they change
+  useEffect(() => {
+    if (slots.length > 0) {
+      saveToCookies('dayPlanSlots', slots);
+    }
+  }, [slots]);
+
+  // Save practices to cookies whenever they change
+  useEffect(() => {
+    if (practices.length > 0) {
+      saveToCookies('practices', practices);
+    }
+  }, [practices]);
+
+  // Save history data to cookies whenever it changes
+  useEffect(() => {
+    if (historyData.length > 0) {
+      saveToCookies('historyData', historyData);
+    }
+  }, [historyData]);
+
+  // Refresh history whenever slots change
+  useEffect(() => {
+    if (slots.length > 0) {
+      refreshHistoryFromSlots();
+    }
+  }, [slots]);
+
+  // Load timer state on startup
+  useEffect(() => {
+    if (slots.length > 0) {
+      loadTimerState();
+    }
+  }, [slots]);
+
+  // Load data on app startup
+  useEffect(() => {
+    if (isAuthenticated && currentUser) {
+      console.log('User logged in, loading data...');
+      
+      // Try to load practices from cookies first
+      const savedPractices = loadFromCookies('practices');
+      if (savedPractices && savedPractices.length > 0) {
+        console.log('Loading practices from cookies:', savedPractices.length);
+        setPractices(savedPractices);
+      } else {
+        console.log('No saved practices in cookies, loading from backend...');
+        loadPractices();
+      }
+      
+      // Try to load slots from cookies first
+      const savedSlots = loadFromCookies('dayPlanSlots');
+      if (savedSlots && savedSlots.length > 0) {
+        console.log('Loading slots from cookies:', savedSlots.length);
+        setSlots(savedSlots);
+      } else {
+        console.log('No saved slots in cookies, loading from backend...');
+        loadTodayData();
+      }
+      
+      // Try to load history from cookies first
+      const savedHistory = loadFromCookies('historyData');
+      if (savedHistory && savedHistory.length > 0) {
+        console.log('Loading history from cookies:', savedHistory.length);
+        setHistoryData(savedHistory);
+      } else {
+        console.log('No saved history in cookies, loading from backend...');
+        loadHistoryData();
+      }
+    }
+  }, [isAuthenticated, currentUser]);
+
+  // Auto-refresh data when page is reloaded or screen changes
+  useEffect(() => {
+    if (isAuthenticated && currentUser) {
+      console.log('Auto-refreshing data for screen:', currentScreen);
+      
+      // Try to load from cookies first
+      const savedSlots = loadFromCookies('dayPlanSlots');
+      if (savedSlots && savedSlots.length > 0) {
+        console.log('Auto-refresh: Loading slots from cookies:', savedSlots.length);
+        setSlots(savedSlots);
+      } else {
+        console.log('Auto-refresh: No saved slots, loading from backend...');
+        loadTodayData();
+      }
+      
+      // Try to load history from cookies first
+      const savedHistory = loadFromCookies('historyData');
+      if (savedHistory && savedHistory.length > 0) {
+        console.log('Auto-refresh: Loading history from cookies:', savedHistory.length);
+        setHistoryData(savedHistory);
+      } else {
+        console.log('Auto-refresh: No saved history, loading from backend...');
+        loadHistoryData();
+      }
+    }
+  }, [isAuthenticated, currentUser, currentScreen]);
+
+  // Refresh data when user returns to the tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isAuthenticated && currentUser) {
+        console.log('User returned to tab - refreshing data...');
+        
+        // Try to load from cookies first
+        const savedSlots = loadFromCookies('dayPlanSlots');
+        if (savedSlots && savedSlots.length > 0) {
+          console.log('Tab return: Loading slots from cookies:', savedSlots.length);
+          setSlots(savedSlots);
+        } else {
+          console.log('Tab return: No saved slots, loading from backend...');
+          loadTodayData();
+        }
+        
+        // Try to load history from cookies first
+        const savedHistory = loadFromCookies('historyData');
+        if (savedHistory && savedHistory.length > 0) {
+          console.log('Tab return: Loading history from cookies:', savedHistory.length);
+          setHistoryData(savedHistory);
+        } else {
+          console.log('Tab return: No saved history, loading from backend...');
+          loadHistoryData();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isAuthenticated, currentUser]);
 
   // Timer logic
   useEffect(() => {
@@ -599,7 +899,7 @@ async function loadPractices() {
       name: tpl.title,
       duration: (tpl.default_duration_sec ?? 120) / 60,
       description: tpl.description ?? '',
-      selected: Boolean(mapUP[tpl.id])
+      selected: Boolean(tpl.is_selected) // Load selection state from backend
     });
     setPractices(templates.map(toPractice));
   } catch (e) {
@@ -607,24 +907,207 @@ async function loadPractices() {
   }
 }
 
+// Load existing day plan and slots for today
+async function loadTodayData() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    console.log('Loading today\'s data for:', today);
+    
+    // Try to get existing day plan for today
+    const dayPlan = await apiGetDayPlanByDate(today);
+    console.log('Day plan query result:', dayPlan);
+    
+    if (dayPlan) {
+      console.log('Found existing day plan:', dayPlan);
+      
+      // Load slots for this day plan
+      const slotsData = await apiListSlots({ day_plan: dayPlan.id });
+      console.log('Found existing slots:', slotsData.length);
+      
+      if (slotsData.length > 0) {
+        // Convert backend slots to frontend format
+        const toClientTimeOfDay = (v?: string): 'morning' | 'day' | 'evening' => {
+          if (v === 'MORNING') return 'morning';
+          if (v === 'AFTERNOON') return 'day';
+          if (v === 'EVENING') return 'evening';
+          return 'day';
+        };
+
+        const mapped: Slot[] = slotsData.map((d: any) => {
+          const rawPractice = d.practice_template ?? d.user_practice ?? d.template ?? d.practice ?? null;
+          const practiceId = rawPractice == null ? null : typeof rawPractice === 'string' ? rawPractice : (rawPractice.id ? String(rawPractice.id) : null);
+          const timeOfDay = d.time_of_day ? toClientTimeOfDay(String(d.time_of_day)) : 'day';
+          const durationMin = (typeof d.duration_sec_snapshot === 'number' ? d.duration_sec_snapshot : 120) / 60;
+          const iso = d.scheduled_at_utc || null;
+          const date = iso ? String(iso).slice(0, 10) : today;
+          const instruction = d.display_payload?.neutral_instruction || t('copy.timer.instruction', currentLanguage);
+
+          return {
+            id: String(d.id),
+            serverId: String(d.id),
+            practiceId,
+            timeOfDay,
+            duration: durationMin,
+            completed: d.status === 'DONE',
+            date,
+            instruction,
+          };
+        });
+
+        // Sort by newest first and limit to 6
+        const sortedSlots = mapped.sort((a, b) => {
+          const dateCompare = b.date.localeCompare(a.date);
+          if (dateCompare !== 0) return dateCompare;
+          return b.id.localeCompare(a.id);
+        });
+        const limitedSlots = sortedSlots.slice(0, 6);
+
+        setSlots(limitedSlots);
+        console.log('Loaded slots:', limitedSlots.length);
+      }
+    } else {
+      console.log('No existing day plan found for today');
+    }
+  } catch (e) {
+    console.warn('Failed to load today\'s data:', e);
+  }
+}
+
+// Load historical data for dashboard
+async function loadHistoryData() {
+  try {
+    console.log('Loading historical data...');
+    
+    // Get all slots (not filtered by day plan)
+    const allSlotsData = await apiListSlots();
+    console.log('Found all slots:', allSlotsData.length);
+    
+    if (allSlotsData.length > 0) {
+      // Convert backend slots to frontend format
+      const toClientTimeOfDay = (v?: string): 'morning' | 'day' | 'evening' => {
+        if (v === 'MORNING') return 'morning';
+        if (v === 'AFTERNOON') return 'day';
+        if (v === 'EVENING') return 'evening';
+        return 'day';
+      };
+
+      const mapped: Slot[] = allSlotsData.map((d: any) => {
+        const rawPractice = d.practice_template ?? d.user_practice ?? d.template ?? d.practice ?? null;
+        const practiceId = rawPractice == null ? null : typeof rawPractice === 'string' ? rawPractice : (rawPractice.id ? String(rawPractice.id) : null);
+        const timeOfDay = d.time_of_day ? toClientTimeOfDay(String(d.time_of_day)) : 'day';
+        const durationMin = (typeof d.duration_sec_snapshot === 'number' ? d.duration_sec_snapshot : 120) / 60;
+        const iso = d.scheduled_at_utc || null;
+        const date = iso ? String(iso).slice(0, 10) : new Date().toISOString().slice(0, 10);
+        const instruction = d.display_payload?.neutral_instruction || t('copy.timer.instruction', currentLanguage);
+
+        return {
+          id: String(d.id),
+          serverId: String(d.id),
+          practiceId,
+          timeOfDay,
+          duration: durationMin,
+          completed: d.status === 'DONE',
+          date,
+          instruction,
+        };
+      });
+
+      // Group by date
+      const groupedByDate = mapped.reduce((acc, slot) => {
+        if (!acc[slot.date]) {
+          acc[slot.date] = [];
+        }
+        acc[slot.date].push(slot);
+        return acc;
+      }, {} as Record<string, Slot[]>);
+
+      // Convert to history format
+      const history = Object.entries(groupedByDate)
+        .map(([date, slots]) => ({
+          date,
+          slots,
+          completed: slots.filter(s => s.completed).length
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date)) // Newest first
+        .slice(0, 30); // Last 30 days
+
+      setHistoryData(history);
+      console.log('Loaded history:', history.length, 'days');
+    }
+  } catch (e) {
+    console.warn('Failed to load historical data:', e);
+  }
+}
+
 // Generate daily plan
   const generateDayPlan = async () => {
+  console.log('=== Generate Day Plan ===');
+  console.log('Local practices:', practices.map(p => ({ id: p.id, name: p.name, selected: p.selected })));
+  console.log('Selected practices (local):', practices.filter(p => p.selected).length);
+  
   // (опционально) если локально ничего не выбрано — подскажем выбрать,
   // но сервер всё равно возьмёт выбранные практики из БД текущего пользователя
   if (!practices.some(p => p.selected)) {
-    setSlots([]);
-    setCurrentScreen('practices');
+    console.log('❌ No practices selected locally, showing alert');
+    alert(currentLanguage === 'ru' 
+      ? 'Пожалуйста, выберите хотя бы одну практику (установите галочку)'
+      : currentLanguage === 'en'
+      ? 'Please select at least one practice (check the box)'
+      : 'Wybierz co najmniej jedną praktykę (zaznacz pole)');
     return;
   }
+
+  console.log('✅ Local check passed, proceeding with plan creation...');
 
   const today = new Date().toISOString().slice(0, 10);
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   try {
+    console.log('Step 1: Creating day plan...');
     const dp = await apiCreateDayPlan(today, tz);
-    await apiGenerateSlotsForPlan(dp.id);
+    console.log('✓ Day plan created:', dp);
+    console.log('Day plan ID:', dp.id);
+    console.log('Day plan date:', dp.local_date);
+    
+    // Wait a moment for backend to sync selected practices
+    console.log('Waiting for backend to sync...');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Verify practices are selected in backend
+    console.log('Verifying selected practices in backend...');
+    const backendPractices = await apiGetPracticeTemplates();
+    const selectedInBackend = backendPractices.filter(p => p.is_selected);
+    console.log(`Backend has ${selectedInBackend.length} selected practices:`, selectedInBackend.map(p => p.title));
+    
+    if (selectedInBackend.length === 0) {
+      throw new Error('No practices are selected in the backend. Please select some practices first.');
+    }
+    
+    // Check if slots already exist for this day plan
+    console.log('Checking existing slots for this day plan...');
+    const existingSlots = await apiListSlots({ day_plan: dp.id });
+    console.log(`Found ${existingSlots.length} existing slots:`, existingSlots.map(s => ({ id: s.id, practice: s.practice_template })));
+    
+    // Clear existing slots if any
+    if (existingSlots.length > 0) {
+      console.log(`Clearing ${existingSlots.length} existing slots...`);
+      await Promise.all(
+        existingSlots.map(slot =>
+          apiDeleteSlot(slot.id).catch(err =>
+            console.warn(`Failed to delete slot ${slot.id}:`, err)
+          )
+        )
+      );
+      console.log('✓ Existing slots cleared');
+    }
+    
+    console.log('Step 2: Generating slots for plan...');
+    const slotsResult = await apiGenerateSlotsForPlan(dp.id);
+    console.log('✓ Slots generation result:', slotsResult);
 
+    console.log('Step 3: Fetching slots...');
     const dtos = await apiListSlots({ day_plan: dp.id });
+    console.log('✓ Fetched slots:', dtos);
 
     const toClientTimeOfDay = (v?: string): 'morning' | 'day' | 'evening' => {
       if (v === 'MORNING') return 'morning';
@@ -671,19 +1154,139 @@ async function loadPractices() {
       };
     });
 
-    setSlots(mapped);
+    // Keep only the 6 newest slots
+    const sortedSlots = mapped.sort((a, b) => {
+      const dateCompare = b.date.localeCompare(a.date);
+      if (dateCompare !== 0) return dateCompare;
+      return b.id.localeCompare(a.id);
+    });
+    const limitedSlots = sortedSlots.slice(0, 6);
+    const slotsToDelete = sortedSlots.slice(6); // Slots beyond the first 6
+
+    // Delete old slots from backend
+    if (slotsToDelete.length > 0) {
+      console.log(`Deleting ${slotsToDelete.length} old slots...`);
+      await Promise.all(
+        slotsToDelete.map(slot => 
+          apiDeleteSlot(slot.id).catch(err => 
+            console.warn(`Failed to delete slot ${slot.id}:`, err)
+          )
+        )
+      );
+    }
+
+    console.log(`✓ Final result: ${limitedSlots.length} slots kept, navigating to plan screen`);
+    setSlots(limitedSlots);
+    
+    // Add today's plan to history
+    setHistoryData(prev => {
+      const existingDayIndex = prev.findIndex(day => day.date === today);
+      if (existingDayIndex >= 0) {
+        // Update existing day with new slots
+        const updatedDay = {
+          ...prev[existingDayIndex],
+          slots: limitedSlots,
+          completed: limitedSlots.filter(s => s.completed).length
+        };
+        const newHistory = [...prev];
+        newHistory[existingDayIndex] = updatedDay;
+        return newHistory;
+      } else {
+        // Add new day
+        const newDay = {
+          date: today,
+          slots: limitedSlots,
+          completed: limitedSlots.filter(s => s.completed).length
+        };
+        return [newDay, ...prev].slice(0, 30); // Keep last 30 days
+      }
+    });
+    
     setCurrentScreen('plan');
-  } catch (e) {
-    console.warn('generateDayPlan failed', e);
-    setSlots([]);
-    setCurrentScreen('plan');
+  } catch (e: any) {
+    console.error('generateDayPlan failed', e);
+    console.error('Error details:', JSON.stringify(e, null, 2));
+    
+    // Show user-friendly error message with more details
+    const baseMsg = 
+      currentLanguage === 'ru' 
+        ? 'Не удалось создать план.'
+        : currentLanguage === 'en'
+        ? 'Failed to create plan.'
+        : 'Nie udało się utworzyć planu.';
+    
+    const detailMsg = 
+      currentLanguage === 'ru'
+        ? '\n\nВажно: После выбора практик (галочки) подождите 1-2 секунды, чтобы изменения сохранились на сервере, затем нажмите "Create Plan".'
+        : currentLanguage === 'en'
+        ? '\n\nImportant: After selecting practices (checkboxes), wait 1-2 seconds for changes to save to the server, then click "Create Plan".'
+        : '\n\nWażne: Po wybraniu praktyk (pola wyboru) poczekaj 1-2 sekundy na zapisanie zmian na serwerze, a następnie kliknij "Create Plan".';
+    
+    alert(baseMsg + detailMsg);
+    setCurrentScreen('practices');
   }
 };
 
 
 
+  // Check if slot is available at current time
+  const isSlotAvailable = (slot: Slot) => {
+    const currentHour = new Date().getHours();
+    const slotTimeOfDay = slot.timeOfDay;
+    
+    switch (slotTimeOfDay) {
+      case 'morning':
+        return currentHour >= 5 && currentHour < 12;
+      case 'day':
+        return currentHour >= 12 && currentHour < 18;
+      case 'evening':
+        return currentHour >= 18 || currentHour < 5;
+      default:
+        return true;
+    }
+  };
+
   // Start slot timer
   const startSlot = (slot: Slot) => {
+    // Check if current time matches the slot's time of day
+    const currentHour = new Date().getHours();
+    const slotTimeOfDay = slot.timeOfDay;
+    
+    let isCorrectTime = false;
+    let timeMessage = '';
+    
+    switch (slotTimeOfDay) {
+      case 'morning':
+        isCorrectTime = currentHour >= 5 && currentHour < 12;
+        timeMessage = currentLanguage === 'ru' ? 
+          'Утренние практики можно делать с 5:00 до 12:00' :
+          currentLanguage === 'en' ? 
+          'Morning practices can be done from 5:00 AM to 12:00 PM' :
+          'Praktyki poranne można wykonywać od 5:00 do 12:00';
+        break;
+      case 'day':
+        isCorrectTime = currentHour >= 12 && currentHour < 18;
+        timeMessage = currentLanguage === 'ru' ? 
+          'Дневные практики можно делать с 12:00 до 18:00' :
+          currentLanguage === 'en' ? 
+          'Day practices can be done from 12:00 PM to 6:00 PM' :
+          'Praktyki dzienne można wykonywać od 12:00 do 18:00';
+        break;
+      case 'evening':
+        isCorrectTime = currentHour >= 18 || currentHour < 5;
+        timeMessage = currentLanguage === 'ru' ? 
+          'Вечерние практики можно делать с 18:00 до 5:00' :
+          currentLanguage === 'en' ? 
+          'Evening practices can be done from 6:00 PM to 5:00 AM' :
+          'Praktyki wieczorne można wykonywać od 18:00 do 5:00';
+        break;
+    }
+    
+    if (!isCorrectTime) {
+      alert(timeMessage);
+      return;
+    }
+    
     setCurrentSlot(slot);
     setTimeRemaining(slot.duration * 60); // Convert to seconds
     setTimerState('idle');
@@ -696,6 +1299,8 @@ async function loadPractices() {
   const completeTimer = () => {
     setTimerState('completed');
     setShowAssessment(true);
+    // Clear timer state from localStorage
+    localStorage.removeItem('timerState');
   };
 
   // Save assessment
@@ -715,6 +1320,43 @@ async function loadPractices() {
     setSlots(prev => prev.map(s => 
       s.id === currentSlot.id ? { ...s, completed: true } : s
     ));
+    
+    // Update history data when a slot is completed
+    const today = new Date().toISOString().slice(0, 10);
+    setHistoryData(prev => {
+      const existingDayIndex = prev.findIndex(day => day.date === today);
+      if (existingDayIndex >= 0) {
+        // Update existing day - find the slot and mark it as completed
+        const updatedSlots = prev[existingDayIndex].slots.map(s => 
+          s.id === currentSlot.id ? { ...s, completed: true } : s
+        );
+        const completedCount = updatedSlots.filter(s => s.completed).length;
+        
+        const updatedDay = {
+          ...prev[existingDayIndex],
+          slots: updatedSlots,
+          completed: completedCount
+        };
+        const newHistory = [...prev];
+        newHistory[existingDayIndex] = updatedDay;
+        console.log('Updated history for existing day:', updatedDay);
+        return newHistory;
+      } else {
+        // Add new day - get all current slots and mark the completed one
+        const allSlots = slots.map(s => 
+          s.id === currentSlot.id ? { ...s, completed: true } : s
+        );
+        const completedCount = allSlots.filter(s => s.completed).length;
+        
+        const newDay = {
+          date: today,
+          slots: allSlots,
+          completed: completedCount
+        };
+        console.log('Created new history day:', newDay);
+        return [newDay, ...prev].slice(0, 30); // Keep last 30 days
+      }
+    });
     
     setShowAssessment(false);
     setCurrentScreen('dashboard');
@@ -751,7 +1393,9 @@ async function loadPractices() {
 
     setCurrentScreen('practices');
   } catch (e: any) {
-    setAuthError('Неверный email или пароль');
+    setAuthError(currentLanguage === 'ru' ? 'Неверный email или пароль' : 
+                 currentLanguage === 'en' ? 'Invalid email or password' : 
+                 'Nieprawidłowy email lub hasło');
   } finally {
     setAuthLoading(false);
   }
@@ -766,7 +1410,12 @@ const handleRegister = async () => {
     if (!registerForm.agreeToTerms) throw new Error('no_terms');
 
     // регистрация
-    await apiRegister({ email: registerForm.email, password: registerForm.password });
+    await apiRegister({ 
+      email: registerForm.email, 
+      password: registerForm.password,
+      firstName: registerForm.firstName,
+      lastName: registerForm.lastName
+    });
     // авто-логин
     await apiLogin({ email: registerForm.email, password: registerForm.password });
 
@@ -784,11 +1433,23 @@ const handleRegister = async () => {
 
     setCurrentScreen('practices');
   } catch (e: any) {
+    console.error('Registration error:', e);
     setAuthError(
-      e.message === 'pass_mismatch' ? 'Пароли не совпадают' :
-      e.message === 'pass_short' ? 'Пароль должен содержать минимум 8 символов' :
-      e.message === 'no_terms'  ? 'Необходимо согласиться с условиями' :
-      'Ошибка регистрации'
+      e.message === 'pass_mismatch' 
+        ? (currentLanguage === 'ru' ? 'Пароли не совпадают' : 
+           currentLanguage === 'en' ? 'Passwords do not match' : 
+           'Hasła nie pasują do siebie')
+        : e.message === 'pass_short'
+        ? (currentLanguage === 'ru' ? 'Пароль должен содержать минимум 8 символов' : 
+           currentLanguage === 'en' ? 'Password must be at least 8 characters' : 
+           'Hasło musi mieć co najmniej 8 znaków')
+        : e.message === 'no_terms'
+        ? (currentLanguage === 'ru' ? 'Необходимо согласиться с условиями' : 
+           currentLanguage === 'en' ? 'You must agree to the terms' : 
+           'Musisz zgodzić się z warunkami')
+        : (currentLanguage === 'ru' ? `Ошибка регистрации: ${e.message || 'Неизвестная ошибка'}` : 
+           currentLanguage === 'en' ? `Registration failed: ${e.message || 'Unknown error'}` : 
+           `Rejestracja nie powiodła się: ${e.message || 'Nieznany błąd'}`)
     );
   } finally {
     setAuthLoading(false);
@@ -920,15 +1581,6 @@ const PracticeSelection = () => {
   const [genLoading, setGenLoading] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
-  const formatMinutes = (m: number) => {
-    const v = Number.isFinite(m) ? m : 0;
-    const rounded = Math.round(v * 10) / 10;
-    // если почти целое — показываем как целое
-    return Math.abs(rounded - Math.round(rounded)) < 0.05
-      ? `${Math.round(rounded)} ${currentLanguage === 'ru' ? 'мин' : 'min'}`
-      : `${rounded} ${currentLanguage === 'ru' ? 'мин' : 'min'}`;
-  };
-
   const genBtnText =
     currentLanguage === 'ru' ? 'Сгенерировать' :
     currentLanguage === 'pl' ? 'Wygeneruj' : 'Generate';
@@ -945,7 +1597,28 @@ const PracticeSelection = () => {
     setGenLoading(true);
     setGenError(null);
     try {
+      // Store old practices - separate selected from unselected
+      const oldPractices = [...practices];
+      const selectedPractices = oldPractices.filter(p => p.selected);
+      const unselectedPractices = oldPractices.filter(p => !p.selected);
+      
+      // Delete ONLY unselected old practices
+      if (unselectedPractices.length > 0) {
+        console.log(`Deleting ${unselectedPractices.length} unselected practices to make room for new ones...`);
+        await Promise.all(
+          unselectedPractices.map(practice => 
+            apiDeletePracticeTemplate(practice.id).catch(err => 
+              console.warn(`Failed to delete practice ${practice.id}:`, err)
+            )
+          )
+        );
+      }
+      
+      console.log(`Keeping ${selectedPractices.length} selected practices`);
+      
+      // Generate new practices (AI should create 6)
       const resp = await apiGeneratePractices(genPrompt.trim()); // <- POST /practices/generate/
+      
       // нормализация к локальному типу Practice
       const normalized = (resp || []).map((tpl: any) => ({
         id: String(tpl.id),
@@ -955,19 +1628,59 @@ const PracticeSelection = () => {
         selected: !!tpl.is_selected,
       }));
 
-      // мердж без дублей по id
-      setPractices(prev => {
-        const map = new Map(prev.map(p => [p.id, p]));
-        for (const p of normalized) map.set(p.id, p);
-        return Array.from(map.values());
-      });
+      console.log(`Generated ${normalized.length} new practices`);
+      
+      // Combine selected practices with new ones
+      const allPractices = [...selectedPractices, ...normalized];
+      const sortedAll = allPractices.sort((a: Practice, b: Practice) => b.id.localeCompare(a.id));
+      
+      // Keep only 6 total (prioritize selected ones)
+      const keepPractices = sortedAll.slice(0, 6);
+      const deleteExtra = sortedAll.slice(6);
+      
+      // Delete extra practices
+      if (deleteExtra.length > 0) {
+        console.log(`Deleting ${deleteExtra.length} extra practices...`);
+        await Promise.all(
+          deleteExtra.map((practice: Practice) => 
+            apiDeletePracticeTemplate(practice.id).catch((err: any) => 
+              console.warn(`Failed to delete extra practice ${practice.id}:`, err)
+            )
+          )
+        );
+      }
+
+      // Update local state with all selected FIRST
+      const finalPractices = keepPractices.map((p: Practice) => ({ ...p, selected: true }));
+      setPractices(finalPractices);
+      
+      // Auto-select all NEW generated practices in the backend
+      const newPracticesInKeep = keepPractices.filter(p => 
+        normalized.some((n: Practice) => n.id === p.id)
+      );
+      
+      if (newPracticesInKeep.length > 0) {
+        console.log(`Auto-selecting ${newPracticesInKeep.length} new practices...`);
+        await Promise.all(
+          newPracticesInKeep.map((practice: Practice) => 
+            apiUpdatePracticeTemplate(practice.id, { is_selected: true })
+              .then(() => {
+                console.log(`✓ Auto-selected practice: ${practice.name}`);
+              })
+              .catch((err: any) => 
+                console.warn(`Failed to auto-select practice ${practice.id}:`, err)
+              )
+          )
+        );
+      }
+      
       setGenPrompt('');
     } catch (e: any) {
       setGenError(
         currentLanguage === 'ru'
           ? 'Не удалось сгенерировать практики'
           : currentLanguage === 'pl'
-          ? 'Nie udało się wygenerować praktyk'
+          ? 'Nie udało się wygenerować практyk'
           : 'Failed to generate practices'
       );
       console.warn('generate_practices_failed', e);
@@ -1008,6 +1721,17 @@ const PracticeSelection = () => {
       )}
 
       <div className="mb-8">
+        {practices.length === 0 ? (
+          <Card className="text-center py-12">
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                {currentLanguage === 'ru' ? 'Нет практик. Создайте их с помощью генератора выше.' :
+                 currentLanguage === 'en' ? 'No practices. Create them using the generator above.' :
+                 'Brak praktyk. Utwórz je za pomocą generatora powyżej.'}
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
         <div className="max-h-[60vh] overflow-y-auto pr-2 overscroll-contain thin-scrollbar">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {practices.map((practice) => (
@@ -1027,14 +1751,18 @@ const PracticeSelection = () => {
                     <Checkbox
                       checked={practice.selected}
                       onCheckedChange={async (checked: any) => {
+                        console.log('Checkbox clicked:', checked, 'for practice:', practice.id);
                         const isSelected = !!checked;
                         // оптимистично обновим UI
                         setPractices(prev =>
                           prev.map(p => p.id === practice.id ? { ...p, selected: isSelected } : p)
                         );
                         try {
+                          console.log(`Sending API request to update practice ${practice.id} to is_selected=${isSelected}`);
                           await apiUpdatePracticeTemplate(practice.id, { is_selected: isSelected });
-                        } catch {
+                          console.log(`✓ Practice ${practice.id} updated: is_selected=${isSelected}`);
+                        } catch (error) {
+                          console.error('✗ Failed to update practice selection:', error);
                           // откат при ошибке
                           setPractices(prev =>
                             prev.map(p => p.id === practice.id ? { ...p, selected: !isSelected } : p)
@@ -1049,9 +1777,11 @@ const PracticeSelection = () => {
             ))}
           </div>
         </div>
+        )}
       </div>
 
-      <div className="text-center">
+      <div className="text-center space-y-4">
+        <div className="flex gap-4 justify-center">
         <Button
           onClick={generateDayPlan}
           disabled={!practices.some(p => p.selected)}
@@ -1060,6 +1790,25 @@ const PracticeSelection = () => {
         >
           {t('copy.actions.createPlan', currentLanguage)}
         </Button>
+          <Button
+            onClick={async () => {
+              console.log('Reloading practices from backend...');
+              await loadPractices();
+              console.log('Practices reloaded:', practices.map(p => ({ id: p.id, name: p.name, selected: p.selected })));
+            }}
+            variant="outline"
+            size="lg"
+          >
+            🔄 Reload
+        </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {currentLanguage === 'ru' 
+            ? 'После выбора практик нажмите "Reload", затем "Create Plan"'
+            : currentLanguage === 'en'
+            ? 'After selecting practices, click "Reload", then "Create Plan"'
+            : 'Po wybraniu praktyk kliknij "Reload", a następnie "Create Plan"'}
+        </p>
       </div>
     </div>
   );
@@ -1076,13 +1825,71 @@ const PracticeSelection = () => {
       }
     };
 
+    // Show only 6 newest slots
+    const visibleSlots = [...slots]
+      .sort((a, b) => {
+        // Sort by date descending (newest first)
+        const dateCompare = b.date.localeCompare(a.date);
+        if (dateCompare !== 0) return dateCompare;
+        // If dates are equal, sort by id descending (newest first)
+        return b.id.localeCompare(a.id);
+      })
+      .slice(0, 6);
+
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
           <h2 className="mb-2">{t('copy.plan.title', currentLanguage)}</h2>
           <p className="text-muted-foreground">
-            {t('copy.plan.subtitle', currentLanguage, { n: slots.length.toString() })}
-          </p>
+                {slots.length > 6
+                  ? `${currentLanguage === 'ru' ? 'Показано 6 из' : currentLanguage === 'en' ? 'Showing 6 of' : 'Wyświetlanie 6 z'} ${slots.length}`
+                  : t('copy.plan.subtitle', currentLanguage, { n: slots.length.toString() })}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setCurrentScreen('practices')}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                {currentLanguage === 'ru' ? 'Выбрать практики' : 
+                 currentLanguage === 'en' ? 'Choose Practices' : 'Wybierz Praktyki'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setCurrentScreen('dashboard')}
+                className="flex items-center gap-2"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                {currentLanguage === 'ru' ? 'История' : 
+                 currentLanguage === 'en' ? 'History' : 'Historia'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  console.log('Manual refresh triggered');
+                  
+                  // Try to load from cookies first
+                  const savedSlots = loadFromCookies('dayPlanSlots');
+                  if (savedSlots && savedSlots.length > 0) {
+                    console.log('Manual refresh: Loading slots from cookies:', savedSlots.length);
+                    setSlots(savedSlots);
+                  } else {
+                    console.log('Manual refresh: No saved slots, loading from backend...');
+                    loadTodayData();
+                  }
+                }}
+                className="flex items-center gap-2"
+              >
+                🔄
+                {currentLanguage === 'ru' ? 'Обновить' : 
+                 currentLanguage === 'en' ? 'Refresh' : 'Odśwież'}
+              </Button>
+            </div>
+          </div>
         </div>
         
         {slots.length === 0 ? (
@@ -1101,45 +1908,90 @@ const PracticeSelection = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {slots.map((slot, index) => (
-              <Card key={slot.id} className={slot.completed ? 'opacity-50' : ''}>
-                <CardHeader>
-                  <div className="flex items-center justify-between mb-2">
-                    <CardTitle className="text-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
+            {visibleSlots.map((slot, index) => (
+              <Card key={slot.id} className={`h-80 flex flex-col ${
+                !isSlotAvailable(slot) && !slot.completed 
+                  ? 'opacity-60 border-orange-200 bg-orange-50' 
+                  : slot.completed 
+                  ? 'opacity-50 border-green-200 bg-green-50' 
+                  : ''
+              }`}>
+                <CardHeader className="pb-4 px-6 pt-4 flex-shrink-0">
+                  <div className="flex items-center justify-between mb-3">
+                    <CardTitle className="text-base font-semibold leading-tight">
                       {practices.find(p => p.id === slot.practiceId)?.name}
                     </CardTitle>
-                    {slot.completed && <CheckCircle className="w-5 h-5 text-green-600" />}
+                    {slot.completed && <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />}
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     {getTimeIcon(slot.timeOfDay)}
                     <span className="capitalize">{getTimeOfDayText(slot.timeOfDay)}</span>
                     <span>•</span>
-                    <span>
-                      {slot.duration === 0.5 ? 
-                        (currentLanguage === 'ru' ? '30 сек' : 
-                         currentLanguage === 'en' ? '30 sec' : '30 sek') : 
-                        `${slot.duration} ${currentLanguage === 'ru' ? 'мин' : 
-                                           currentLanguage === 'en' ? 'min' : 'min'}`}
+                      <span>{formatMinutes(slot.duration)}</span>
+                    </div>
+                    {!isSlotAvailable(slot) && !slot.completed && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Clock className="w-3 h-3 text-orange-500" />
+                        <span className="text-orange-600">
+                          {currentLanguage === 'ru' ? 'Доступно' : 
+                           currentLanguage === 'en' ? 'Available' : 'Dostępne'} 
+                          {slot.timeOfDay === 'morning' ? 
+                            (currentLanguage === 'ru' ? ' с 5:00' : 
+                             currentLanguage === 'en' ? ' from 5:00 AM' : ' od 5:00') :
+                           slot.timeOfDay === 'day' ? 
+                            (currentLanguage === 'ru' ? ' с 12:00' : 
+                             currentLanguage === 'en' ? ' from 12:00 PM' : ' od 12:00') :
+                            (currentLanguage === 'ru' ? ' с 18:00' : 
+                             currentLanguage === 'en' ? ' from 6:00 PM' : ' od 18:00')}
                     </span>
-                    <span>•</span>
-                    <Badge variant="outline" className="text-xs">
+                      </div>
+                    )}
+                    <div className="flex justify-end">
+                      <Badge variant="outline" className="text-xs px-2 py-0.5">
                       {t('copy.slot.meta.today', currentLanguage)}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-4">
+                  </div>
+                </CardHeader>
+                
+                <div className="flex-1 flex flex-col justify-between px-6">
+                  <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
                     {slot.instruction}
                   </p>
+                  
+                  <div className="mt-auto pb-4">
                   <Button 
                     onClick={() => startSlot(slot)}
-                    disabled={slot.completed}
-                    className="w-full"
-                  >
-                    {slot.completed ? 
-                      t('copy.slot.cta.completed', currentLanguage) : 
-                      t('copy.slot.cta.start', currentLanguage)}
+                      disabled={slot.completed || !isSlotAvailable(slot)}
+                      className={`w-full h-10 text-sm font-medium ${
+                        !isSlotAvailable(slot) && !slot.completed 
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : ''
+                      }`}
+                      size="sm"
+                    >
+                    {slot.completed ? (
+                      <>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        {t('copy.slot.cta.completed', currentLanguage)}
+                      </>
+                    ) : !isSlotAvailable(slot) ? (
+                      <>
+                        <Clock className="w-4 h-4 mr-2" />
+                        {currentLanguage === 'ru' ? 'Не время' : 
+                         currentLanguage === 'en' ? 'Not time' : 'Nie czas'}
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 mr-2" />
+                        {t('copy.slot.cta.start', currentLanguage)}
+                      </>
+                    )}
                   </Button>
-                </CardHeader>
+                  </div>
+                </div>
               </Card>
             ))}
           </div>
@@ -1169,11 +2021,7 @@ const PracticeSelection = () => {
                     {formatTime(timeRemaining)}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    {currentSlot.duration === 0.5 ? 
-                      (currentLanguage === 'ru' ? '30 сек' : 
-                       currentLanguage === 'en' ? '30 sec' : '30 sek') : 
-                      `${currentSlot.duration} ${currentLanguage === 'ru' ? 'мин' : 
-                                                 currentLanguage === 'en' ? 'min' : 'min'}`}
+                    {formatMinutes(currentSlot.duration)}
                   </div>
                 </div>
               </div>
@@ -1567,6 +2415,15 @@ const PracticeSelection = () => {
 
   // Dashboard Screen
   const Dashboard = () => {
+    const getTimeOfDayText = (timeOfDay: string) => {
+      switch (timeOfDay) {
+        case 'morning': return t('copy.slot.meta.morning', currentLanguage);
+        case 'day': return t('copy.slot.meta.afternoon', currentLanguage);
+        case 'evening': return t('copy.slot.meta.evening', currentLanguage);
+        default: return timeOfDay;
+      }
+    };
+
     const [selectedMetric, setSelectedMetric] = useState<'mood' | 'lightness' | 'satisfaction' | 'nervousness'>('mood');
     
     const getMetricLabel = (metric: string) => {
@@ -1605,87 +2462,158 @@ const PracticeSelection = () => {
 };
 
     
+    const formatDate = (dateStr: string) => {
+      const date = new Date(dateStr);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      if (dateStr === today.toISOString().slice(0, 10)) {
+        return currentLanguage === 'ru' ? 'Сегодня' : 
+               currentLanguage === 'en' ? 'Today' : 'Dzisiaj';
+      } else if (dateStr === yesterday.toISOString().slice(0, 10)) {
+        return currentLanguage === 'ru' ? 'Вчера' : 
+               currentLanguage === 'en' ? 'Yesterday' : 'Wczoraj';
+      } else {
+        return date.toLocaleDateString(currentLanguage === 'ru' ? 'ru-RU' : 
+                                      currentLanguage === 'en' ? 'en-US' : 'pl-PL');
+      }
+    };
+
+    const getCompletionRate = (completed: number, total: number) => {
+      if (total === 0) return 0;
+      return Math.round((completed / total) * 100);
+    };
+    
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div>
           <h2 className="mb-2">{t('copy.nav.dashboard', currentLanguage)}</h2>
           <p className="text-muted-foreground">
-            {currentLanguage === 'ru' ? 'Анализ эффективности практик' : 
-             currentLanguage === 'en' ? 'Practice effectiveness analysis' : 'Analiza skuteczności praktyk'}
-          </p>
+                {currentLanguage === 'ru' ? 'История ваших практик' : 
+                 currentLanguage === 'en' ? 'Your practice history' : 'Historia twoich praktyk'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setCurrentScreen('practices')}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                {currentLanguage === 'ru' ? 'Выбрать практики' : 
+                 currentLanguage === 'en' ? 'Choose Practices' : 'Wybierz Praktyki'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setCurrentScreen('plan')}
+                className="flex items-center gap-2"
+              >
+                <Calendar className="w-4 h-4" />
+                {currentLanguage === 'ru' ? 'Сегодняшний план' : 
+                 currentLanguage === 'en' ? 'Today\'s Plan' : 'Dzisiejszy Plan'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  console.log('Manual history refresh triggered');
+                  refreshHistoryFromSlots();
+                }}
+                className="flex items-center gap-2"
+              >
+                🔄
+                {currentLanguage === 'ru' ? 'Обновить историю' : 
+                 currentLanguage === 'en' ? 'Refresh History' : 'Odśwież historię'}
+              </Button>
+            </div>
+          </div>
         </div>
         
-        {assessments.length < 3 ? (
-          <Card className="text-center py-12 mb-8">
+        {historyData.length === 0 ? (
+          <Card className="text-center py-12">
             <CardContent>
+              <div className="mb-4">
+                <Calendar className="w-12 h-12 mx-auto text-muted-foreground" />
+              </div>
               <h3 className="mb-2">
-                {currentLanguage === 'ru' ? 'Недостаточно данных' : 
-                 currentLanguage === 'en' ? 'Not enough data' : 'Za mało danych'}
+                {currentLanguage === 'ru' ? 'Нет истории' : 
+                 currentLanguage === 'en' ? 'No History' : 'Brak historii'}
               </h3>
-              <p className="text-muted-foreground">
-                {t('copy.empty.moreData', currentLanguage, { n: (3 - assessments.length).toString() })}
+              <p className="text-muted-foreground mb-6">
+                {currentLanguage === 'ru' ? 'Создайте свой первый план дня' : 
+                 currentLanguage === 'en' ? 'Create your first day plan' : 'Utwórz swój pierwszy plan dnia'}
               </p>
+              <Button onClick={() => setCurrentScreen('practices')}>
+                {currentLanguage === 'ru' ? 'Начать' : 
+                 currentLanguage === 'en' ? 'Get Started' : 'Rozpocznij'}
+              </Button>
             </CardContent>
           </Card>
         ) : (
-          <>
-            <div className="mb-8">
-              <h3 className="mb-4">
-                {currentLanguage === 'ru' ? 'Итоги по практикам' : 
-                 currentLanguage === 'en' ? 'Practice results' : 'Wyniki praktyk'}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {practices.filter(p => p.selected).map(practice => (
-                  <Card key={practice.id}>
+          <div className="space-y-6">
+            {console.log('Rendering history data:', historyData)}
+            {historyData.map((dayData, index) => (
+              <Card key={dayData.date} className={index === 0 ? 'border-primary' : ''}>
                     <CardHeader>
-                      <CardTitle className="text-lg">{practice.name}</CardTitle>
-                      <div className="text-2xl mb-2">
-                        {currentLanguage === 'ru' ? '+0.7 к настроению' : 
-                         currentLanguage === 'en' ? '+0.7 to mood' : '+0.7 do nastroju'}
-                      </div>
-                      <Badge variant="outline" className="w-fit">
-                        {t('copy.dashboard.confidence.med', currentLanguage)}
-                      </Badge>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {t('copy.dashboard.summary.legend', currentLanguage)}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">
+                        {formatDate(dayData.date)}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {dayData.slots.length} {currentLanguage === 'ru' ? 'практик' : 
+                         currentLanguage === 'en' ? 'practices' : 'praktyk'}
                       </p>
-                    </CardHeader>
-                  </Card>
-                ))}
               </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-primary">
+                        {getCompletionRate(dayData.completed, dayData.slots.length)}%
             </div>
-            
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>
-                    {currentLanguage === 'ru' ? 'По времени суток' : 
-                     currentLanguage === 'en' ? 'By time of day' : 'Według pory dnia'}
-                  </CardTitle>
-                  <Tabs value={selectedMetric} onValueChange={(value: any) => setSelectedMetric(value)}>
-                    <TabsList>
-                      <TabsTrigger value="mood">{t('copy.rating.mood', currentLanguage)}</TabsTrigger>
-                      <TabsTrigger value="lightness">{t('copy.rating.ease', currentLanguage)}</TabsTrigger>
-                      <TabsTrigger value="satisfaction">{t('copy.rating.satisfaction', currentLanguage)}</TabsTrigger>
-                      <TabsTrigger value="nervousness">{t('copy.rating.nervousness', currentLanguage)}</TabsTrigger>
-                    </TabsList>
-                  </Tabs>
+                      <p className="text-sm text-muted-foreground">
+                        {dayData.completed}/{dayData.slots.length} {currentLanguage === 'ru' ? 'завершено' : 
+                         currentLanguage === 'en' ? 'completed' : 'ukończono'}
+                      </p>
+                    </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={buildChartData()}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="timeOfDay" />
-                      <YAxis domain={[0, 10]} />
-                      <Bar dataKey={selectedMetric} fill="hsl(var(--primary))" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {dayData.slots.map((slot) => (
+                      <div 
+                        key={slot.id} 
+                        className={`p-3 rounded-lg border ${
+                          slot.completed 
+                            ? 'bg-green-50 border-green-200' 
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-medium text-sm">
+                            {practices.find(p => p.id === slot.practiceId)?.name || 'Unknown Practice'}
+                          </h4>
+                          {slot.completed && <CheckCircle className="w-4 h-4 text-green-600" />}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {getTimeIcon(slot.timeOfDay)}
+                          <span className="capitalize">{getTimeOfDayText(slot.timeOfDay)}</span>
+                          <span>•</span>
+                          <span>
+                            {slot.duration === 0.5 ? 
+                              (currentLanguage === 'ru' ? '30 сек' : 
+                               currentLanguage === 'en' ? '30 sec' : '30 sek') : 
+                              `${slot.duration} ${currentLanguage === 'ru' ? 'мин' : 
+                                                 currentLanguage === 'en' ? 'min' : 'min'}`}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                 </div>
               </CardContent>
             </Card>
-          </>
+            ))}
+          </div>
         )}
       </div>
     );
@@ -1731,15 +2659,54 @@ const PracticeSelection = () => {
                 <div>
                   <div className="font-medium">{practice.name}</div>
                   <div className="text-sm text-muted-foreground">
-                    {practice.duration === 0.5 ? '30 секунд' : `${practice.duration} минут`}
+                    {formatMinutes(practice.duration)}
                   </div>
                 </div>
                 <Switch 
                   checked={practice.selected}
-                  onCheckedChange={(checked: any) => {
+                  onCheckedChange={async (checked: any) => {
+                    try {
+                      // Update backend
+                      await apiUpdatePracticeTemplate(practice.id, { is_selected: checked });
+                      
+                      // Update local state
                     setPractices(prev => prev.map(p => 
                       p.id === practice.id ? { ...p, selected: checked } : p
                     ));
+                      
+                      // If unchecking, remove from daily plan
+                      if (!checked) {
+                        console.log(`Before removal - Current slots:`, slots.length);
+                        setSlots(prev => {
+                          const updatedSlots = prev.filter(slot => slot.practiceId !== practice.id);
+                          console.log(`After removal - Updated slots:`, updatedSlots.length);
+                          // Save updated slots to cookies
+                          if (updatedSlots.length > 0) {
+                            saveToCookies('dayPlanSlots', updatedSlots);
+                          } else {
+                            clearCookie('dayPlanSlots');
+                          }
+                          return updatedSlots;
+                        });
+                        
+                        // Also remove from history data
+                        setHistoryData(prev => prev.map(day => ({
+                          ...day,
+                          slots: day.slots.filter(slot => slot.practiceId !== practice.id)
+                        })));
+                        
+                        console.log(`Removed practice "${practice.name}" from daily plan`);
+                      } else {
+                        console.log(`Added practice "${practice.name}" to daily plan`);
+                      }
+                    } catch (error) {
+                      console.error('Failed to update practice selection:', error);
+                      alert(currentLanguage === 'ru' ? 
+                        'Ошибка при обновлении практики' :
+                        currentLanguage === 'en' ? 
+                        'Error updating practice' :
+                        'Błąd podczas aktualizacji praktyki');
+                    }
                   }}
                 />
               </div>
@@ -1749,21 +2716,26 @@ const PracticeSelection = () => {
         
         <Card>
            <CardHeader>
-    <CardTitle>{t('copy.settings.data', currentLanguage)}</CardTitle>
+            <CardTitle className="text-red-600">
+              {currentLanguage === 'ru' ? 'Опасная зона' : 
+               currentLanguage === 'en' ? 'Danger Zone' : 'Strefa niebezpieczna'}
+            </CardTitle>
   </CardHeader>
-  <CardContent>
+          <CardContent className="space-y-4">
     <Button
-      variant="outline"
-      onClick={() => {
-        setSlots([]);
-        setAssessments([]);
-        setCurrentSlot(null);
-      }}
-    >
-      {t('copy.settings.resetDemo', currentLanguage)}
+              variant="destructive"
+              onClick={resetUserData}
+              className="w-full sm:w-auto"
+            >
+              {currentLanguage === 'ru' ? '🗑️ Удалить все данные' : 
+               currentLanguage === 'en' ? '🗑️ Delete All Data' : '🗑️ Usuń wszystkie dane'}
     </Button>
-    <p className="text-xs text-muted-foreground mt-4">
-      {t('copy.settings.disclaimer', currentLanguage)}
+            <p className="text-xs text-muted-foreground">
+              {currentLanguage === 'ru' ? 
+                'Удаляет все практики, планы, историю и оценки. Аккаунт остается нетронутым.' :
+                currentLanguage === 'en' ? 
+                'Deletes all practices, plans, history, and assessments. Account remains untouched.' :
+                'Usuwa wszystkie praktyki, plany, historię i oceny. Konto pozostaje nietknięte.'}
     </p>
   </CardContent>
 </Card>
