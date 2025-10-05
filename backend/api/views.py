@@ -11,10 +11,11 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from api.models import User, PracticeTemplate,  DayPlan, Slot, Rating
 from api.serializers import (UserSerializer, PracticeTemplateSerializer,
-                DayPlanSerializer,SlotSerializer, RatingSerializer)
+                             DayPlanSerializer, SlotSerializer, RatingSerializer)
 from rest_framework.permissions import AllowAny
 from rest_framework import viewsets, permissions
 import random
+from datetime import timedelta
 
 # Create your views here.
 
@@ -96,7 +97,7 @@ class PracticeTemplateViewSet(viewsets.ModelViewSet):
         """Only admin ability for modifications"""
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [permissions.IsAuthenticated()]
-        return [permissions.AllowAny()] 
+        return [permissions.AllowAny()]
 
     def get_queryset(self):
         user = self.request.user
@@ -104,14 +105,14 @@ class PracticeTemplateViewSet(viewsets.ModelViewSet):
             return PracticeTemplate.objects.all().order_by('-created_at')
 
         # Для обычного пользователя
-        selected_only = self.request.query_params.get("selected_only", "false").lower() == "true"
+        selected_only = self.request.query_params.get(
+            "selected_only", "false").lower() == "true"
         qs = PracticeTemplate.objects.filter(user=user)
         if selected_only:
             qs = qs.filter(is_selected=True)
         return qs.order_by('-created_at')
 
 
-    
 class DayPlanViewSet(viewsets.ModelViewSet):
     queryset = DayPlan.objects.all()
     serializer_class = DayPlanSerializer
@@ -137,7 +138,7 @@ class DayPlanViewSet(viewsets.ModelViewSet):
         local_date = request.data.get('local_date')
         timezone = request.data.get('timezone')
         if not local_date or not timezone:
-            return Response({'detail':'local_date and timezone are required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'local_date and timezone are required'}, status=status.HTTP_400_BAD_REQUEST)
 
         obj, created = DayPlan.objects.get_or_create(
             user=request.user,
@@ -158,6 +159,7 @@ class DayPlanViewSet(viewsets.ModelViewSet):
             qs = qs.filter(local_date=ld)
         return qs.order_by('-local_date')
 
+
 class SlotViewSet(viewsets.ModelViewSet):
     queryset = Slot.objects.all()
     serializer_class = SlotSerializer
@@ -168,30 +170,46 @@ class SlotViewSet(viewsets.ModelViewSet):
         day_plan_id = self.request.query_params.get('day_plan')
         return qs.filter(day_plan_id=day_plan_id) if day_plan_id else qs
 
-    def perform_create(self, serializer):
-        day_plan = serializer.validated_data['day_plan']
-
-        if day_plan.user != self.request.user:
-            raise PermissionDenied("Day plan does not belong to the current user")
+    def create(self, request, *args, **kwargs):
+        day_plan_id = request.data.get('day_plan')
+        if not day_plan_id:
+            return Response(
+                {"detail": "Field 'day_plan' is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            day_plan = DayPlan.objects.get(id=day_plan_id, user=request.user)
+        except DayPlan.DoesNotExist:
+            raise PermissionDenied(
+                "Day plan does not belong to the current user")
 
         selected_practices = list(
             PracticeTemplate.objects.filter(
-                user=self.request.user,
-                is_selected=True
-            )
+                user=request.user, is_selected=True)
         )
+
+        if not selected_practices:
+            return Response(
+                {"detail": "No selected practices found for user."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         random.shuffle(selected_practices)
         selected_practices = selected_practices[:6]
 
         created_slots = []
-        for practice in selected_practices:
-            slot = serializer.save(
-                user=self.request.user,
+        for i, practice in enumerate(selected_practices):
+            slot = Slot.objects.create(
+                user=request.user,
+                day_plan=day_plan,
                 user_practice=practice,
-                day_plan=day_plan
+                time_of_day=random.choice(['MORNING', 'AFTERNOON', 'EVENING']),
+                scheduled_at_utc=timezone.now() + timedelta(hours=i)
             )
             created_slots.append(slot)
+
+        serializer = self.get_serializer(created_slots, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'])
     def start(self, request, pk=None):
@@ -208,7 +226,8 @@ class SlotViewSet(viewsets.ModelViewSet):
         slot.ended_at_utc = timezone.now()
         slot.save()
         return Response(SlotSerializer(slot).data, status=status.HTTP_200_OK)
-    
+
+
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
@@ -219,5 +238,3 @@ class RatingViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(rated_at_utc=timezone.now())
-
-
